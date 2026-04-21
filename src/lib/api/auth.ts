@@ -1,5 +1,5 @@
 // src/lib/api/auth.ts
-import { apiFetch } from "../api";
+import { apiFetch, tokenStore } from "../api";
 import type { ApiSuccess, ApiMessage, AuthResponse, MeResponse, SessionItem } from "#/types";
 
 export interface LoginInput {
@@ -29,6 +29,11 @@ export async function login(data: LoginInput): Promise<AuthResponse> {
 		method: "POST",
 		body: JSON.stringify(data),
 	});
+	// In prod the response body contains accessToken + refreshToken because
+	// apiFetch sends X-Client-Transport: bearer. Store them immediately.
+	if (import.meta.env.PROD && res.data?.accessToken && res.data?.refreshToken) {
+		tokenStore.setTokens(res.data.accessToken, res.data.refreshToken);
+	}
 	return res.data;
 }
 
@@ -37,6 +42,9 @@ export async function register(data: RegisterInput): Promise<AuthResponse> {
 		method: "POST",
 		body: JSON.stringify(data),
 	});
+	if (import.meta.env.PROD && res.data?.accessToken && res.data?.refreshToken) {
+		tokenStore.setTokens(res.data.accessToken, res.data.refreshToken);
+	}
 	return res.data;
 }
 
@@ -46,12 +54,18 @@ export async function getMe(): Promise<MeResponse> {
 }
 
 export async function logout(): Promise<void> {
-	await apiFetch<ApiMessage>("/auth/logout", { method: "POST" });
+	// In prod send the refresh token in the body (no cookie available cross-domain)
+	const rt = import.meta.env.PROD ? tokenStore.getRefreshToken() : undefined;
+	await apiFetch<ApiMessage>("/auth/logout", {
+		method: "POST",
+		body: rt ? JSON.stringify({ refreshToken: rt }) : undefined,
+	});
+	tokenStore.clearTokens();
 }
 
-// FIX: was /auth/logout-all, backend expects /auth/logout/all
 export async function logoutAll(): Promise<void> {
 	await apiFetch<ApiMessage>("/auth/logout/all", { method: "POST" });
+	tokenStore.clearTokens();
 }
 
 export async function getSessions(): Promise<SessionItem[]> {

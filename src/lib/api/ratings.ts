@@ -1,3 +1,4 @@
+// src/lib/api/ratings.ts
 import { apiFetch } from "../api";
 import type {
 	ApiSuccess,
@@ -8,18 +9,32 @@ import type {
 	RevieweeType,
 	Cursor,
 	LegacyApiResponse,
+	SubmitRatingResponse,
 } from "#/types";
 
-// Get ratings for a connection
+// Get ratings for a connection (both parties' ratings)
 export async function getConnectionRatings(connectionId: string): Promise<ConnectionRatings> {
 	const res = await apiFetch<ApiSuccess<ConnectionRatings>>(`/ratings/connection/${connectionId}`);
 	return res.data;
 }
 
-// Get public ratings for a user or property
-export async function getPublicRatings(
-	revieweeType: RevieweeType,
-	revieweeId: string,
+// Get public ratings for a user
+export async function getPublicUserRatings(userId: string, cursor?: Cursor): Promise<PaginatedResponse<PublicRating>> {
+	const searchParams = new URLSearchParams();
+	if (cursor) {
+		searchParams.set("cursorTime", cursor.cursorTime);
+		searchParams.set("cursorId", cursor.cursorId);
+	}
+	const query = searchParams.toString();
+	const res = await apiFetch<ApiSuccess<PaginatedResponse<PublicRating>>>(
+		`/ratings/user/${userId}${query ? `?${query}` : ""}`,
+	);
+	return res.data;
+}
+
+// Get public ratings for a property
+export async function getPublicPropertyRatings(
+	propertyId: string,
 	cursor?: Cursor,
 ): Promise<PaginatedResponse<PublicRating>> {
 	const searchParams = new URLSearchParams();
@@ -29,9 +44,33 @@ export async function getPublicRatings(
 	}
 	const query = searchParams.toString();
 	const res = await apiFetch<ApiSuccess<PaginatedResponse<PublicRating>>>(
-		`/ratings/${revieweeType}/${revieweeId}${query ? `?${query}` : ""}`,
+		`/ratings/property/${propertyId}${query ? `?${query}` : ""}`,
 	);
 	return res.data;
+}
+
+// Get my given ratings (authenticated)
+export async function getMyGivenRatings(cursor?: Cursor): Promise<PaginatedResponse<Rating>> {
+	const searchParams = new URLSearchParams();
+	if (cursor) {
+		searchParams.set("cursorTime", cursor.cursorTime);
+		searchParams.set("cursorId", cursor.cursorId);
+	}
+	const query = searchParams.toString();
+	const res = await apiFetch<ApiSuccess<PaginatedResponse<Rating>>>(`/ratings/me/given${query ? `?${query}` : ""}`);
+	return res.data;
+}
+
+// Keep old function signature for backward compat
+export async function getPublicRatings(
+	revieweeType: RevieweeType,
+	revieweeId: string,
+	cursor?: Cursor,
+): Promise<PaginatedResponse<PublicRating>> {
+	if (revieweeType === "user") {
+		return getPublicUserRatings(revieweeId, cursor);
+	}
+	return getPublicPropertyRatings(revieweeId, cursor);
 }
 
 export interface SubmitRatingInput {
@@ -46,8 +85,8 @@ export interface SubmitRatingInput {
 	comment?: string;
 }
 
-export async function submitRating(data: SubmitRatingInput): Promise<Rating> {
-	const res = await apiFetch<ApiSuccess<Rating>>("/ratings", {
+export async function submitRating(data: SubmitRatingInput): Promise<SubmitRatingResponse> {
+	const res = await apiFetch<ApiSuccess<SubmitRatingResponse>>("/ratings", {
 		method: "POST",
 		body: JSON.stringify(data),
 	});
@@ -63,23 +102,24 @@ function fail<T>(message: string): LegacyApiResponse<T> {
 }
 
 export const ratingsApi = {
-	async getPropertyRatings(_propertyId: string): Promise<LegacyApiResponse<Rating[]>> {
-		return ok([]);
+	async getPropertyRatings(propertyId: string): Promise<LegacyApiResponse<PublicRating[]>> {
+		try {
+			const res = await getPublicPropertyRatings(propertyId);
+			return ok(res.items);
+		} catch {
+			return fail("Failed to get property ratings");
+		}
 	},
 
 	async createRating(data: {
-		property_id: string;
-		rating: number;
+		connectionId: string;
+		revieweeType: RevieweeType;
+		revieweeId: string;
+		overallScore: number;
 		comment?: string;
-	}): Promise<LegacyApiResponse<Rating>> {
+	}): Promise<LegacyApiResponse<SubmitRatingResponse>> {
 		try {
-			const res = await submitRating({
-				connectionId: "00000000-0000-0000-0000-000000000000",
-				revieweeType: "property",
-				revieweeId: data.property_id,
-				overallScore: data.rating,
-				comment: data.comment,
-			});
+			const res = await submitRating(data);
 			return ok(res);
 		} catch {
 			return fail("Failed to submit rating");

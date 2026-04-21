@@ -1,3 +1,4 @@
+// src/context/AuthContext.tsx
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
 import type { MeResponse, AuthResponse, Role } from "#/types";
 import { getMe, logout as apiLogout } from "#/lib/api/auth";
@@ -33,9 +34,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 	useEffect(() => {
 		async function hydrate() {
-			// In production, tokens are stored in sessionStorage (via tokenStore).
-			// We need tokens present before calling /auth/me — if there are none,
-			// the user is logged out (skip the network call entirely).
+			// In production (cross-domain), tokens live in sessionStorage via tokenStore.
+			// If there are no tokens at all, skip the network call — user is not logged in.
 			if (import.meta.env.PROD && !tokenStore.hasTokens()) {
 				setIsLoading(false);
 				return;
@@ -45,8 +45,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 				const me = await getMe();
 				setUser(me);
 			} catch {
-				// Token may be expired — tokenStore.clearTokens() is called by
-				// apiFetch's 401 handler when silent refresh also fails.
+				// Token expired or invalid. apiFetch will attempt silent refresh first.
+				// If that also fails it clears the token store, so we just set user to null.
 				setUser(null);
 			} finally {
 				setIsLoading(false);
@@ -55,13 +55,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		hydrate();
 	}, []);
 
-	// login() is called after register/login/googleCallback with the full
-	// AuthResponse (which includes accessToken + refreshToken in prod because
-	// we send X-Client-Transport: bearer).
+	/**
+	 * Called after successful login / register / googleCallback.
+	 *
+	 * The backend ALWAYS includes accessToken + refreshToken in the response body
+	 * (auth.controller.js always returns the full `tokens` object, not just buildSafeBody).
+	 * In production we extract them here and store via tokenStore for subsequent requests.
+	 * In development, HttpOnly cookies on localhost handle everything — we just set user state.
+	 */
 	const login = useCallback((data: AuthResponse) => {
-		// Store tokens if present (prod). In dev, cookies handle this.
-		if (import.meta.env.PROD && data.accessToken && data.refreshToken) {
-			tokenStore.setTokens(data.accessToken, data.refreshToken);
+		if (import.meta.env.PROD) {
+			if (data.accessToken && data.refreshToken) {
+				tokenStore.setTokens(data.accessToken, data.refreshToken);
+			} else {
+				// This should never happen if the backend is correct, but guard defensively.
+				console.warn("[AuthContext] login() called without tokens in production — auth may not persist");
+			}
 		}
 		setUser({ ...data.user, sid: data.sid });
 	}, []);
@@ -70,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		try {
 			await apiLogout();
 		} finally {
+			// Always clear local state even if the API call fails
 			tokenStore.clearTokens();
 			setUser(null);
 		}

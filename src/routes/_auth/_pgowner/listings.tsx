@@ -24,7 +24,7 @@ import { getMyProperties } from "#/lib/api/properties";
 import { getListingInterests, updateInterestStatus } from "#/lib/api/interests";
 import { formatCurrency } from "#/lib/format";
 import { toast } from "#/components/ui/sonner";
-import { Plus, Bed, IndianRupee, Edit, Trash2, ToggleLeft, ToggleRight, Users, Loader2, Eye } from "lucide-react";
+import { Plus, Bed, IndianRupee, Trash2, ToggleLeft, ToggleRight, Users, Loader2, Eye } from "lucide-react";
 import type { ListingSearchItem, PropertyListItem, InterestRequestWithStudent } from "#/types";
 import type { CreateListingInput } from "#/lib/api/listings";
 
@@ -46,7 +46,6 @@ function ListingsPage() {
 	const [interestsLoading, setInterestsLoading] = useState(false);
 	const [deleteTarget, setDeleteTarget] = useState<ListingSearchItem | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
-	const [selectedPropertyFilter, setSelectedPropertyFilter] = useState<string>(property_id || "all");
 
 	const [formData, setFormData] = useState<Partial<CreateListingInput>>({
 		propertyId: property_id || "",
@@ -70,7 +69,6 @@ function ListingsPage() {
 
 	useEffect(() => {
 		if (property_id) {
-			setSelectedPropertyFilter(property_id);
 			setFormData((prev) => ({ ...prev, propertyId: property_id }));
 		}
 	}, [property_id]);
@@ -78,10 +76,7 @@ function ListingsPage() {
 	const fetchData = async () => {
 		try {
 			setIsLoading(true);
-			const [listingsRes, propertiesRes] = await Promise.all([
-				searchListings({ listingType: "pg_room", limit: 100 }),
-				getMyProperties(),
-			]);
+			const [listingsRes, propertiesRes] = await Promise.all([searchListings({ limit: 100 }), getMyProperties()]);
 			setListings(listingsRes.items);
 			setProperties(propertiesRes.items);
 		} catch {
@@ -188,18 +183,6 @@ function ListingsPage() {
 		} catch {
 			toast.error("Failed to decline interest");
 		}
-	};
-
-	const filteredListings =
-		selectedPropertyFilter === "all" ? listings : (
-			listings.filter((l) => {
-				// ListingSearchItem doesn't have property_id, filter by checking against property names
-				return true; // Show all when we can't filter by property_id in search results
-			})
-		);
-
-	const getPropertyName = (propertyId: string) => {
-		return properties.find((p) => p.property_id === propertyId)?.property_name || "Unknown Property";
 	};
 
 	const ListingForm = () => (
@@ -460,7 +443,7 @@ function ListingsPage() {
 				</DialogContent>
 			</Dialog>
 
-			{filteredListings.length === 0 ?
+			{listings.length === 0 ?
 				<EmptyState
 					icon={Bed}
 					title="No listings yet"
@@ -476,7 +459,7 @@ function ListingsPage() {
 					}
 				/>
 			:	<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-					{filteredListings.map((listing) => (
+					{listings.map((listing) => (
 						<Card
 							key={listing.listingId}
 							className="overflow-hidden">

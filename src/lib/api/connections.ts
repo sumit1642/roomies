@@ -11,7 +11,10 @@ import type {
 	Connection,
 } from "#/types";
 
-// FIX: was using "status" param, backend expects "confirmationStatus"
+/**
+ * GET /connections/me — the authenticated user's connection feed.
+ * Backend param is "confirmationStatus" (not "status").
+ */
 export async function getMyConnections(
 	confirmationStatus?: ConfirmationStatus,
 	cursor?: Cursor,
@@ -34,11 +37,27 @@ export async function getConnection(connectionId: string): Promise<ConnectionDet
 	return res.data;
 }
 
-// confirmConnection = POST /connections/:id/confirm
-// This records that THIS caller's side of the real-world interaction happened.
-// Both parties must call this for confirmation_status to become "confirmed".
-export async function confirmConnection(connectionId: string): Promise<ConnectionDetail> {
-	const res = await apiFetch<ApiSuccess<ConnectionDetail>>(`/connections/${connectionId}/confirm`, {
+/**
+ * POST /connections/:id/confirm
+ * Records that THIS caller's side of the real-world interaction happened.
+ * Both parties must call this for confirmationStatus to become "confirmed".
+ */
+export async function confirmConnection(connectionId: string): Promise<{
+	connectionId: string;
+	initiatorConfirmed: boolean;
+	counterpartConfirmed: boolean;
+	confirmationStatus: ConfirmationStatus;
+	updatedAt: string;
+}> {
+	const res = await apiFetch<
+		ApiSuccess<{
+			connectionId: string;
+			initiatorConfirmed: boolean;
+			counterpartConfirmed: boolean;
+			confirmationStatus: ConfirmationStatus;
+			updatedAt: string;
+		}>
+	>(`/connections/${connectionId}/confirm`, {
 		method: "POST",
 	});
 	return res.data;
@@ -82,7 +101,7 @@ export const connectionsApi = {
 		}
 	},
 
-	async acceptConnection(connectionId: string): Promise<LegacyApiResponse<ConnectionDetail>> {
+	async acceptConnection(connectionId: string): Promise<LegacyApiResponse<{ confirmationStatus: string }>> {
 		try {
 			const res = await confirmConnection(connectionId);
 			return ok(res);
@@ -91,12 +110,13 @@ export const connectionsApi = {
 		}
 	},
 
-	// NOTE: "Rejecting" a connection is not a backend concept at the connection level.
-	// Declining happens at the interest request stage via PATCH /interests/:id/status { status: "declined" }
-	// Connections already created cannot be "rejected" — they can only be confirmed or left pending.
+	// Declining a connection is not a backend concept at this stage.
+	// Declining happens via PATCH /interests/:id/status { status: "declined" }
+	// BEFORE a connection is created.
 	async rejectConnection(_connectionId: string): Promise<LegacyApiResponse<null>> {
 		return fail(
-			"Declining a connection is not supported. Decline the interest request before a connection is created.",
+			"Declining a connection is not supported after it has been created. " +
+				"Decline the interest request before the connection is established.",
 		);
 	},
 };

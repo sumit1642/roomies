@@ -36,6 +36,7 @@ import {
 	Building2,
 	MessageCircle,
 	Loader2,
+	Hash,
 } from "lucide-react";
 
 export const Route = createFileRoute("/_auth/listing/$id")({
@@ -64,7 +65,6 @@ function ListingDetailPage() {
 				setListing(data);
 			} catch {
 				toast.error("Listing not found");
-				// FIX: /browse has validateSearch — must pass search: {}
 				navigate({ to: "/browse", search: {} });
 			} finally {
 				setIsLoading(false);
@@ -114,9 +114,11 @@ function ListingDetailPage() {
 
 	if (!listing) return null;
 
+	// Backend embeds property as camelCase object (from fetchListingDetail)
+	const property = listing.property;
+
 	return (
 		<div className="mx-auto max-w-6xl px-4 py-8 space-y-6">
-			{/* Back Button — FIX: pass search: {} for /browse */}
 			<Button
 				variant="ghost"
 				onClick={() => navigate({ to: "/browse", search: {} })}>
@@ -128,16 +130,19 @@ function ListingDetailPage() {
 				{/* Main Content */}
 				<div className="lg:col-span-2 space-y-6">
 					{/* Photos */}
-					{listing.photos.length > 0 && (
+					{listing.photos && listing.photos.length > 0 && (
 						<div className="grid gap-2 grid-cols-2">
-							{listing.photos.slice(0, 4).map((photo) => (
-								<img
-									key={photo.photoId}
-									src={photo.photoUrl}
-									alt={listing.title}
-									className="rounded-lg object-cover aspect-video w-full"
-								/>
-							))}
+							{listing.photos
+								.filter((p) => !p.photoUrl.startsWith("processing:"))
+								.slice(0, 4)
+								.map((photo) => (
+									<img
+										key={photo.photoId}
+										src={photo.photoUrl}
+										alt={listing.title}
+										className="rounded-lg object-cover aspect-video w-full"
+									/>
+								))}
 						</div>
 					)}
 
@@ -145,19 +150,27 @@ function ListingDetailPage() {
 					<Card>
 						<CardHeader>
 							<div className="flex items-start justify-between">
-								<div>
+								<div className="flex-1 min-w-0">
 									<h1 className="text-2xl font-bold">{listing.title}</h1>
-									{listing.property && (
+									{/* Property name — backend returns property.propertyName */}
+									{property && (
 										<p className="flex items-center gap-1 text-muted-foreground mt-1">
-											<Building2 className="h-4 w-4" />
-											{listing.property.property_name}
+											<Building2 className="h-4 w-4 shrink-0" />
+											{property.propertyName}
 										</p>
 									)}
 									<p className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-										<MapPin className="h-4 w-4" />
+										<MapPin className="h-4 w-4 shrink-0" />
 										{listing.city}
 										{listing.locality && `, ${listing.locality}`}
+										{listing.addressLine && ` — ${listing.addressLine}`}
 									</p>
+									{listing.pincode && (
+										<p className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+											<Hash className="h-3 w-3 shrink-0" />
+											{listing.pincode}
+										</p>
+									)}
 								</div>
 								{isStudent && (
 									<Button
@@ -180,6 +193,11 @@ function ListingDetailPage() {
 									{formatCurrency(listing.rentPerMonth)}
 									<span className="text-base font-normal text-muted-foreground">/month</span>
 								</div>
+								{listing.depositAmount > 0 && (
+									<span className="text-sm text-muted-foreground">
+										+ {formatCurrency(listing.depositAmount)} deposit
+									</span>
+								)}
 							</div>
 
 							<div className="flex flex-wrap gap-2">
@@ -201,6 +219,9 @@ function ListingDetailPage() {
 								</Badge>
 								{listing.rentIncludesUtilities && <Badge variant="secondary">Utilities included</Badge>}
 								{listing.isNegotiable && <Badge variant="outline">Negotiable</Badge>}
+								<Badge variant={listing.status === "active" ? "success" : "secondary"}>
+									{listing.status}
+								</Badge>
 							</div>
 						</CardContent>
 					</Card>
@@ -218,7 +239,7 @@ function ListingDetailPage() {
 					)}
 
 					{/* Amenities */}
-					{listing.amenities.length > 0 && (
+					{listing.amenities && listing.amenities.length > 0 && (
 						<Card>
 							<CardHeader>
 								<CardTitle>Amenities</CardTitle>
@@ -229,7 +250,7 @@ function ListingDetailPage() {
 										<div
 											key={amenity.amenityId}
 											className="flex items-center gap-2">
-											<Check className="h-4 w-4 text-green-500" />
+											<Check className="h-4 w-4 text-green-500 shrink-0" />
 											<span className="text-sm">{amenity.name}</span>
 										</div>
 									))}
@@ -238,35 +259,56 @@ function ListingDetailPage() {
 						</Card>
 					)}
 
+					{/* Preferences */}
+					{listing.preferences && listing.preferences.length > 0 && (
+						<Card>
+							<CardHeader>
+								<CardTitle>Tenant Preferences</CardTitle>
+							</CardHeader>
+							<CardContent>
+								<div className="flex flex-wrap gap-2">
+									{listing.preferences.map((pref) => (
+										<Badge
+											key={pref.preferenceKey}
+											variant="outline">
+											{pref.preferenceKey.replace(/_/g, " ")}:{" "}
+											{pref.preferenceValue.replace(/_/g, " ")}
+										</Badge>
+									))}
+								</div>
+							</CardContent>
+						</Card>
+					)}
+
 					{/* Property info */}
-					{listing.property && (
+					{property && (
 						<Card>
 							<CardHeader>
 								<CardTitle>Property Details</CardTitle>
 							</CardHeader>
 							<CardContent className="space-y-2">
-								<p className="text-sm">
-									<span className="text-muted-foreground">Address: </span>
-									{listing.property.address_line}, {listing.property.city}
-									{listing.property.pincode && ` - ${listing.property.pincode}`}
+								<p className="text-sm font-medium">{property.propertyName}</p>
+								<p className="text-sm text-muted-foreground">
+									{property.addressLine}, {property.city}
+									{property.locality && `, ${property.locality}`}
 								</p>
-								{listing.property.house_rules && (
-									<div>
+								{property.houseRules && (
+									<div className="mt-3">
 										<p className="text-sm font-medium mb-1">House Rules</p>
 										<p className="text-sm text-muted-foreground whitespace-pre-wrap">
-											{listing.property.house_rules}
+											{property.houseRules}
 										</p>
 									</div>
 								)}
-								{listing.property.average_rating > 0 && (
-									<div className="flex items-center gap-2">
+								{property.averageRating > 0 && (
+									<div className="flex items-center gap-2 mt-2">
 										<StarRating
-											rating={listing.property.average_rating}
+											rating={property.averageRating}
 											size="sm"
 											showValue
 										/>
 										<span className="text-sm text-muted-foreground">
-											({listing.property.rating_count} reviews)
+											({property.ratingCount} reviews)
 										</span>
 									</div>
 								)}
@@ -289,13 +331,19 @@ function ListingDetailPage() {
 									size="lg"
 								/>
 								<div>
-									<p className="font-medium">{listing.poster_name}</p>
+									<p className="font-medium">{listing.poster_name || "Property Owner"}</p>
 									{listing.poster_rating > 0 && (
 										<StarRating
 											rating={listing.poster_rating}
 											size="sm"
 											showValue
 										/>
+									)}
+									{listing.poster_rating_count > 0 && (
+										<p className="text-xs text-muted-foreground">
+											{listing.poster_rating_count} review
+											{listing.poster_rating_count !== 1 ? "s" : ""}
+										</p>
 									)}
 								</div>
 							</div>
@@ -374,17 +422,23 @@ function ListingDetailPage() {
 							</div>
 							<Separator />
 							<div className="flex justify-between">
-								<span className="text-muted-foreground">Total Move-in</span>
+								<span className="text-muted-foreground">Total Move-in Cost</span>
 								<span className="font-bold text-primary">
 									{formatCurrency(listing.rentPerMonth + listing.depositAmount)}
 								</span>
 							</div>
 							<div className="flex justify-between text-sm">
-								<span className="text-muted-foreground">Capacity</span>
+								<span className="text-muted-foreground">Occupancy</span>
 								<span>
 									{listing.currentOccupants}/{listing.totalCapacity} occupied
 								</span>
 							</div>
+							{listing.bedType && (
+								<div className="flex justify-between text-sm">
+									<span className="text-muted-foreground">Bed Type</span>
+									<span>{listing.bedType.replace(/_/g, " ")}</span>
+								</div>
+							)}
 						</CardContent>
 					</Card>
 				</div>

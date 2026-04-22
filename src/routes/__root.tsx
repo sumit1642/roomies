@@ -1,7 +1,7 @@
 import { HeadContent, Outlet, Scripts, createRootRoute, Link } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { TanStackDevtools } from "@tanstack/react-devtools";
-import { Analytics } from "@vercel/analytics/next";
+import { Analytics } from "@vercel/analytics/react";
 import { AuthProvider } from "#/context/AuthContext";
 import { Toaster } from "#/components/ui/sonner";
 import { Home } from "lucide-react";

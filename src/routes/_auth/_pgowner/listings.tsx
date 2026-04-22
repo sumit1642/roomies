@@ -36,9 +36,6 @@ export const Route = createFileRoute("/_auth/_pgowner/listings")({
 });
 
 // ─── ListingForm defined OUTSIDE parent component ─────────────────────────────
-// CRITICAL FIX: Defining a component inside another component causes React to
-// treat it as a new component type on every render, unmounting/remounting the
-// form DOM — this loses input focus after every keystroke.
 interface ListingFormProps {
 	formData: Partial<CreateListingInput>;
 	onChange: (data: Partial<CreateListingInput>) => void;
@@ -314,7 +311,8 @@ function ListingsPage() {
 	const handleDelete = async () => {
 		if (!deleteTarget) return;
 		try {
-			await deleteListing(deleteTarget.listingId);
+			// listing_id is snake_case from backend
+			await deleteListing(deleteTarget.listing_id);
 			toast.success("Listing deleted");
 			setDeleteTarget(null);
 			fetchData();
@@ -326,7 +324,8 @@ function ListingsPage() {
 	const handleToggleStatus = async (listing: ListingSearchItem) => {
 		const newStatus = listing.status === "active" ? "deactivated" : "active";
 		try {
-			await updateListingStatus(listing.listingId, newStatus as "active" | "deactivated");
+			// listing_id is snake_case from backend
+			await updateListingStatus(listing.listing_id, newStatus as "active" | "deactivated");
 			toast.success(`Listing ${newStatus === "active" ? "activated" : "deactivated"}`);
 			fetchData();
 		} catch {
@@ -476,8 +475,9 @@ function ListingsPage() {
 				/>
 			:	<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 					{listings.map((listing) => (
+						// listing_id is snake_case from backend
 						<Card
-							key={listing.listingId}
+							key={listing.listing_id}
 							className="overflow-hidden">
 							<CardHeader className="pb-3">
 								<div className="flex items-start justify-between">
@@ -493,20 +493,23 @@ function ListingsPage() {
 							</CardHeader>
 							<CardContent className="space-y-3">
 								<div className="flex flex-wrap gap-2">
+									{/* room_type is snake_case */}
 									<Badge variant="outline">
 										<Bed className="mr-1 h-3 w-3" />
-										{listing.roomType.replace("_", " ")}
+										{listing.room_type.replace(/_/g, " ")}
 									</Badge>
-									{listing.preferredGender && listing.preferredGender !== "prefer_not_to_say" && (
+									{/* preferred_gender is snake_case */}
+									{listing.preferred_gender && listing.preferred_gender !== "prefer_not_to_say" && (
 										<Badge variant="outline">
 											<Users className="mr-1 h-3 w-3" />
-											{listing.preferredGender}
+											{listing.preferred_gender}
 										</Badge>
 									)}
 								</div>
 
 								<div className="flex items-center text-primary font-semibold">
 									<IndianRupee className="h-4 w-4" />
+									{/* rentPerMonth is camelCase (toRupees transformation) */}
 									{formatCurrency(listing.rentPerMonth)}/mo
 								</div>
 
@@ -514,7 +517,7 @@ function ListingsPage() {
 									<Button
 										variant="ghost"
 										size="sm"
-										onClick={() => handleViewInterests(listing.listingId)}
+										onClick={() => handleViewInterests(listing.listing_id)}
 										className="flex-1">
 										<Eye className="mr-1 h-4 w-4" />
 										Interests

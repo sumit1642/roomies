@@ -30,7 +30,7 @@ export interface ListingSearchParams {
 	amenityIds?: string[];
 	lat?: number;
 	lng?: number;
-	// FIX: was radiusKm, backend expects radius in meters
+	/** Radius in metres (100–50000). Backend param name is "radius". */
 	radius?: number;
 	cursorTime?: string;
 	cursorId?: string;
@@ -50,7 +50,6 @@ export async function searchListings(params: ListingSearchParams): Promise<Pagin
 	if (params.amenityIds?.length) searchParams.set("amenityIds", params.amenityIds.join(","));
 	if (params.lat !== undefined) searchParams.set("lat", String(params.lat));
 	if (params.lng !== undefined) searchParams.set("lng", String(params.lng));
-	// FIX: backend param name is "radius" in meters (min 100, max 50000)
 	if (params.radius !== undefined) searchParams.set("radius", String(params.radius));
 	if (params.cursorTime) searchParams.set("cursorTime", params.cursorTime);
 	if (params.cursorId) searchParams.set("cursorId", params.cursorId);
@@ -150,7 +149,6 @@ export async function deleteListingPhoto(listingId: string, photoId: string): Pr
 	await apiFetch<ApiMessage>(`/listings/${listingId}/photos/${photoId}`, { method: "DELETE" });
 }
 
-// FIX: was PUT, backend expects PATCH
 export async function setCoverPhoto(listingId: string, photoId: string): Promise<void> {
 	await apiFetch<ApiMessage>(`/listings/${listingId}/photos/${photoId}/cover`, { method: "PATCH" });
 }
@@ -166,7 +164,6 @@ export async function reorderPhotos(
 }
 
 // Saved listings
-// FIX: was /saved-listings, backend expects /listings/me/saved
 export async function getSavedListings(cursor?: Cursor): Promise<PaginatedResponse<SavedListingItem>> {
 	const searchParams = new URLSearchParams();
 	if (cursor) {
@@ -180,47 +177,60 @@ export async function getSavedListings(cursor?: Cursor): Promise<PaginatedRespon
 	return res.data;
 }
 
-// FIX: was /saved-listings/${listingId}, backend expects POST /listings/${listingId}/save
 export async function saveListing(listingId: string): Promise<void> {
 	await apiFetch<ApiMessage>(`/listings/${listingId}/save`, { method: "POST" });
 }
 
-// FIX: was /saved-listings/${listingId}, backend expects DELETE /listings/${listingId}/save
 export async function unsaveListing(listingId: string): Promise<void> {
 	await apiFetch<ApiMessage>(`/listings/${listingId}/save`, { method: "DELETE" });
 }
 
+// ── Legacy adapters ───────────────────────────────────────────────────────────
+// These map the real API response shapes to the legacy Listing type used by
+// older parts of the codebase. Field names follow the actual backend response
+// (snake_case for searchListings, camelCase for getListing/fetchListingDetail).
+
 function toLegacyListingFromSearch(item: ListingSearchItem): Listing {
 	return {
-		id: item.listingId,
+		// listing_id is snake_case from backend searchListings spread
+		id: item.listing_id,
 		title: item.title,
-		room_type: item.roomType,
-		gender_preference: item.preferredGender ?? "prefer_not_to_say",
+		// room_type is snake_case
+		room_type: item.room_type,
+		// preferred_gender is snake_case
+		gender_preference: item.preferred_gender ?? "prefer_not_to_say",
+		// rentPerMonth is camelCase (toRupees transform)
 		rent_amount: item.rentPerMonth,
 		deposit_amount: item.depositAmount,
-		available_from: item.availableFrom,
+		// available_from is snake_case
+		available_from: item.available_from,
 		status: item.status,
 		property: {
-			name: "Property",
+			name: item.property_name ?? undefined,
 			city: item.city,
 		},
 	};
 }
 
-// FIX: ListingPropertySummary uses camelCase fields — was incorrectly using snake_case
 function toLegacyListingFromDetail(item: ListingDetail): Listing {
 	return {
-		id: item.listingId,
+		// listing_id is snake_case (raw pg column, spread by toRupees)
+		id: item.listing_id,
 		title: item.title,
 		description: item.description,
-		property_id: item.propertyId ?? undefined,
-		room_type: item.roomType,
-		gender_preference: item.preferredGender ?? "prefer_not_to_say",
+		property_id: item.property_id ?? undefined,
+		// room_type is snake_case
+		room_type: item.room_type,
+		// preferred_gender is snake_case
+		gender_preference: item.preferred_gender ?? "prefer_not_to_say",
+		// rentPerMonth and depositAmount are camelCase (toRupees transform)
 		rent_amount: item.rentPerMonth,
 		deposit_amount: item.depositAmount,
-		available_from: item.availableFrom,
+		// available_from is snake_case
+		available_from: item.available_from,
 		amenities: item.amenities.map((a) => a.name),
 		status: item.status,
+		// property is camelCase (JSONB_BUILD_OBJECT in fetchListingDetail)
 		property:
 			item.property ?
 				{
@@ -228,12 +238,12 @@ function toLegacyListingFromDetail(item: ListingDetail): Listing {
 					name: item.property.propertyName,
 					city: item.property.city,
 					address: item.property.addressLine,
-					pincode: item.property.locality ?? undefined, // pincode not on summary; locality is closest optional
 					rating: item.property.averageRating,
 					rating_count: item.property.ratingCount,
 				}
 			:	undefined,
 		owner: {
+			// poster_name is snake_case
 			name: item.poster_name,
 		},
 	};

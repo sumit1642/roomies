@@ -53,7 +53,6 @@ function BrowseListingsPage() {
 		gender_preference: searchParams.gender as ListingFilters["gender_preference"],
 	});
 
-	// tempFilters drive the form inputs — only committed to `filters` on Apply
 	const [tempFilters, setTempFilters] = useState<ListingFilters>(filters);
 
 	const fetchListings = useCallback(async (activeFilters: ListingFilters, cursor?: Cursor, append = false) => {
@@ -280,14 +279,15 @@ function BrowseListingsPage() {
 			:	<>
 					<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 						{listings.map((listing) => (
+							// Key uses the snake_case listing_id from the actual API response
 							<Card
-								key={listing.listingId}
+								key={listing.listing_id}
 								className="overflow-hidden hover:shadow-lg transition-shadow">
-								{/* Cover photo */}
-								{(listing.cover_photo_url || listing.coverPhotoUrl) && (
+								{/* Cover photo — snake_case field from backend */}
+								{listing.cover_photo_url && !listing.cover_photo_url.startsWith("processing:") && (
 									<div className="aspect-video bg-muted overflow-hidden">
 										<img
-											src={(listing.cover_photo_url || listing.coverPhotoUrl) as string}
+											src={listing.cover_photo_url}
 											alt={listing.title}
 											className="w-full h-full object-cover"
 										/>
@@ -298,7 +298,7 @@ function BrowseListingsPage() {
 										<div className="flex-1 min-w-0">
 											<Link
 												to="/listing/$id"
-												params={{ id: listing.listingId }}>
+												params={{ id: listing.listing_id }}>
 												<CardTitle className="text-lg line-clamp-1 hover:text-primary transition-colors">
 													{listing.title}
 												</CardTitle>
@@ -313,11 +313,11 @@ function BrowseListingsPage() {
 										<Button
 											variant="ghost"
 											size="sm"
-											onClick={() => handleToggleSave(listing.listingId)}
-											className={savedIds.has(listing.listingId) ? "text-red-500" : ""}>
+											onClick={() => handleToggleSave(listing.listing_id)}
+											className={savedIds.has(listing.listing_id) ? "text-red-500" : ""}>
 											<Heart
 												className="h-5 w-5"
-												fill={savedIds.has(listing.listingId) ? "currentColor" : "none"}
+												fill={savedIds.has(listing.listing_id) ? "currentColor" : "none"}
 											/>
 										</Button>
 									</div>
@@ -330,19 +330,21 @@ function BrowseListingsPage() {
 									</div>
 
 									<div className="flex flex-wrap gap-2">
+										{/* room_type is snake_case from backend */}
 										<Badge variant="outline">
 											<Bed className="mr-1 h-3 w-3" />
-											{listing.roomType.replace("_", " ")}
+											{listing.room_type.replace(/_/g, " ")}
 										</Badge>
-										{listing.preferredGender && listing.preferredGender !== "prefer_not_to_say" && (
-											<Badge variant="outline">
-												<Users className="mr-1 h-3 w-3" />
-												{listing.preferredGender}
-											</Badge>
-										)}
+										{listing.preferred_gender &&
+											listing.preferred_gender !== "prefer_not_to_say" && (
+												<Badge variant="outline">
+													<Users className="mr-1 h-3 w-3" />
+													{listing.preferred_gender}
+												</Badge>
+											)}
 									</div>
 
-									{listing.average_rating !== undefined && listing.average_rating > 0 && (
+									{listing.average_rating > 0 && (
 										<StarRating
 											rating={listing.average_rating}
 											size="sm"
@@ -357,7 +359,7 @@ function BrowseListingsPage() {
 										</div>
 										<Link
 											to="/listing/$id"
-											params={{ id: listing.listingId }}>
+											params={{ id: listing.listing_id }}>
 											<Button size="sm">View Details</Button>
 										</Link>
 									</div>

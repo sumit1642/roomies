@@ -74,13 +74,15 @@ function ListingDetailPage() {
 	}, [id, navigate]);
 
 	const handleToggleSave = async () => {
+		if (!listing) return;
 		try {
 			if (isSaved) {
-				await unsaveListing(id);
+				// listing_id is snake_case from backend
+				await unsaveListing(listing.listing_id);
 				setIsSaved(false);
 				toast.success("Removed from saved");
 			} else {
-				await saveListing(id);
+				await saveListing(listing.listing_id);
 				setIsSaved(true);
 				toast.success("Saved to favorites");
 			}
@@ -90,9 +92,10 @@ function ListingDetailPage() {
 	};
 
 	const handleExpressInterest = async () => {
+		if (!listing) return;
 		setIsSendingInterest(true);
 		try {
-			await sendInterest(id, interestMessage || undefined);
+			await sendInterest(listing.listing_id, interestMessage || undefined);
 			toast.success("Interest sent! The owner will be notified.");
 			setInterestSent(true);
 			setInterestDialogOpen(false);
@@ -128,7 +131,7 @@ function ListingDetailPage() {
 			<div className="grid gap-6 lg:grid-cols-3">
 				{/* Main Content */}
 				<div className="lg:col-span-2 space-y-6">
-					{/* Photos */}
+					{/* Photos — photoUrl is camelCase (from JSONB_BUILD_OBJECT in fetchListingDetail) */}
 					{listing.photos && listing.photos.length > 0 && (
 						<div className="grid gap-2 grid-cols-2">
 							{listing.photos
@@ -151,17 +154,19 @@ function ListingDetailPage() {
 							<div className="flex items-start justify-between">
 								<div className="flex-1 min-w-0">
 									<h1 className="text-2xl font-bold">{listing.title}</h1>
+									{/* property fields are camelCase (from JSONB_BUILD_OBJECT) */}
 									{property && (
 										<p className="flex items-center gap-1 text-muted-foreground mt-1">
 											<Building2 className="h-4 w-4 shrink-0" />
 											{property.propertyName}
 										</p>
 									)}
+									{/* city/locality/address_line are snake_case (raw pg columns) */}
 									<p className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
 										<MapPin className="h-4 w-4 shrink-0" />
 										{listing.city}
 										{listing.locality && `, ${listing.locality}`}
-										{listing.addressLine && ` — ${listing.addressLine}`}
+										{listing.address_line && ` — ${listing.address_line}`}
 									</p>
 									{listing.pincode && (
 										<p className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
@@ -186,6 +191,7 @@ function ListingDetailPage() {
 						</CardHeader>
 						<CardContent>
 							<div className="flex items-center gap-4 mb-4">
+								{/* rentPerMonth is camelCase (toRupees transformation) */}
 								<div className="flex items-center text-2xl font-bold text-primary">
 									<IndianRupee className="h-6 w-6" />
 									{formatCurrency(listing.rentPerMonth)}
@@ -199,24 +205,31 @@ function ListingDetailPage() {
 							</div>
 
 							<div className="flex flex-wrap gap-2">
+								{/* room_type is snake_case */}
 								<Badge variant="outline">
 									<Bed className="mr-1 h-4 w-4" />
-									{listing.roomType.replace("_", " ")}
+									{listing.room_type.replace(/_/g, " ")}
 								</Badge>
-								{listing.preferredGender && (
+								{/* preferred_gender is snake_case */}
+								{listing.preferred_gender && (
 									<Badge variant="outline">
 										<Users className="mr-1 h-4 w-4" />
-										{listing.preferredGender === "prefer_not_to_say" ?
+										{listing.preferred_gender === "prefer_not_to_say" ?
 											"Any Gender"
-										:	listing.preferredGender}
+										:	listing.preferred_gender}
 									</Badge>
 								)}
+								{/* available_from is snake_case */}
 								<Badge variant="outline">
 									<Calendar className="mr-1 h-4 w-4" />
-									From {formatDate(listing.availableFrom)}
+									From {formatDate(listing.available_from)}
 								</Badge>
-								{listing.rentIncludesUtilities && <Badge variant="secondary">Utilities included</Badge>}
-								{listing.isNegotiable && <Badge variant="outline">Negotiable</Badge>}
+								{/* rent_includes_utilities is snake_case */}
+								{listing.rent_includes_utilities && (
+									<Badge variant="secondary">Utilities included</Badge>
+								)}
+								{/* is_negotiable is snake_case */}
+								{listing.is_negotiable && <Badge variant="outline">Negotiable</Badge>}
 								<Badge variant={listing.status === "active" ? "success" : "secondary"}>
 									{listing.status}
 								</Badge>
@@ -236,7 +249,7 @@ function ListingDetailPage() {
 						</Card>
 					)}
 
-					{/* Amenities */}
+					{/* Amenities — from JSONB_BUILD_OBJECT, keys are camelCase */}
 					{listing.amenities && listing.amenities.length > 0 && (
 						<Card>
 							<CardHeader>
@@ -257,7 +270,7 @@ function ListingDetailPage() {
 						</Card>
 					)}
 
-					{/* Preferences */}
+					{/* Preferences — from JSONB_BUILD_OBJECT, keys are camelCase */}
 					{listing.preferences && listing.preferences.length > 0 && (
 						<Card>
 							<CardHeader>
@@ -278,6 +291,7 @@ function ListingDetailPage() {
 						</Card>
 					)}
 
+					{/* Property details — property summary uses camelCase (JSONB_BUILD_OBJECT) */}
 					{property && (
 						<Card>
 							<CardHeader>
@@ -316,7 +330,7 @@ function ListingDetailPage() {
 
 				{/* Sidebar */}
 				<div className="space-y-6">
-					{/* Poster / Owner Card */}
+					{/* Poster / Owner Card — poster_rating, poster_name are snake_case */}
 					<Card>
 						<CardHeader>
 							<CardTitle>Posted By</CardTitle>
@@ -424,16 +438,18 @@ function ListingDetailPage() {
 									{formatCurrency(listing.rentPerMonth + listing.depositAmount)}
 								</span>
 							</div>
+							{/* total_capacity and current_occupants are snake_case */}
 							<div className="flex justify-between text-sm">
 								<span className="text-muted-foreground">Occupancy</span>
 								<span>
-									{listing.currentOccupants}/{listing.totalCapacity} occupied
+									{listing.current_occupants}/{listing.total_capacity} occupied
 								</span>
 							</div>
-							{listing.bedType && (
+							{/* bed_type is snake_case */}
+							{listing.bed_type && (
 								<div className="flex justify-between text-sm">
 									<span className="text-muted-foreground">Bed Type</span>
-									<span>{listing.bedType.replace(/_/g, " ")}</span>
+									<span>{listing.bed_type.replace(/_/g, " ")}</span>
 								</div>
 							)}
 						</CardContent>

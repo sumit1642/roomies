@@ -88,6 +88,7 @@ function StudentDashboard({ userId, isEmailVerified }: { userId: string; isEmail
 			{/* Welcome Banner */}
 			<div className="mb-8">
 				<h1 className="text-3xl font-bold text-(--sea-ink)">
+					{/* full_name is snake_case from StudentProfile */}
 					Welcome back{profile?.full_name ? `, ${profile.full_name.split(" ")[0]}` : ""}!
 				</h1>
 				<p className="mt-1 text-muted-foreground">Find your perfect accommodation today</p>
@@ -226,6 +227,7 @@ function PgOwnerDashboard({ userId }: { userId: string }) {
 				]);
 
 				setProfile(profileData);
+				// active_listing_count is snake_case from PropertyListItem
 				const listings = properties.items.reduce((sum, p) => sum + p.active_listing_count, 0);
 				setActiveListings(listings);
 				setConfirmedConnections(connections.items.length);
@@ -238,6 +240,7 @@ function PgOwnerDashboard({ userId }: { userId: string }) {
 		fetchData();
 	}, [userId]);
 
+	// verification_status is snake_case from PgOwnerProfile
 	const verificationStatus = profile?.verification_status || "unverified";
 
 	return (
@@ -247,6 +250,7 @@ function PgOwnerDashboard({ userId }: { userId: string }) {
 				<div>
 					<div className="flex items-center gap-3">
 						<h1 className="text-3xl font-bold text-(--sea-ink)">
+							{/* owner_full_name is snake_case from PgOwnerProfile */}
 							Welcome{profile?.owner_full_name ? `, ${profile.owner_full_name.split(" ")[0]}` : ""}!
 						</h1>
 						<VerificationBadge status={verificationStatus} />

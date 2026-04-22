@@ -1,3 +1,4 @@
+// src/routes/_auth/_student/saved.tsx
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { Loader2, Bookmark, Trash2, MapPin, Calendar } from "lucide-react";
@@ -56,6 +57,7 @@ function SavedListingsPage() {
 		setRemovingId(listingId);
 		try {
 			await unsaveListing(listingId);
+			// listing_id is the snake_case key from the backend response
 			setListings((prev) => prev.filter((l) => l.listing_id !== listingId));
 			toast.success("Listing removed from saved");
 		} catch {
@@ -128,8 +130,9 @@ function SavedListingCard({
 	onRemove: () => void;
 	isRemoving: boolean;
 }) {
-	// Filter out processing photos
-	const photoUrl = listing.cover_photo_url?.startsWith("processing:") ? null : listing.cover_photo_url;
+	// Filter out processing placeholder photos
+	const photoUrl =
+		listing.cover_photo_url && !listing.cover_photo_url.startsWith("processing:") ? listing.cover_photo_url : null;
 
 	return (
 		<Card className="overflow-hidden">
@@ -147,6 +150,7 @@ function SavedListingCard({
 						/>
 					:	<div className="flex items-center justify-center h-full text-muted-foreground">No photo</div>}
 					<div className="absolute top-2 right-2">
+						{/* status is snake_case but the value itself matches the StatusBadge union */}
 						<StatusBadge status={listing.status} />
 					</div>
 				</div>
@@ -182,13 +186,16 @@ function SavedListingCard({
 				</div>
 
 				<div className="mt-2 flex items-center justify-between">
+					{/* rentPerMonth is camelCase (transformed by backend toRupees()) */}
 					<span className="text-lg font-bold text-primary">{formatCurrency(listing.rentPerMonth)}/mo</span>
+					{/* room_type is snake_case */}
 					<span className="text-sm text-muted-foreground">{formatRoomType(listing.room_type)}</span>
 				</div>
 
 				<div className="mt-2 flex items-center justify-between text-sm">
 					<div className="flex items-center gap-1 text-muted-foreground">
 						<Calendar className="size-3" />
+						{/* available_from is snake_case */}
 						<span>From {formatDate(listing.available_from)}</span>
 					</div>
 					{listing.average_rating > 0 && (

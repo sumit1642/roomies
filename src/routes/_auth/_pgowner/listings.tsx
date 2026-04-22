@@ -35,6 +35,200 @@ export const Route = createFileRoute("/_auth/_pgowner/listings")({
 	}),
 });
 
+// ─── ListingForm defined OUTSIDE parent component ─────────────────────────────
+// CRITICAL FIX: Defining a component inside another component causes React to
+// treat it as a new component type on every render, unmounting/remounting the
+// form DOM — this loses input focus after every keystroke.
+interface ListingFormProps {
+	formData: Partial<CreateListingInput>;
+	onChange: (data: Partial<CreateListingInput>) => void;
+	onSubmit: (e: React.FormEvent) => void;
+	isSubmitting: boolean;
+	properties: PropertyListItem[];
+}
+
+function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }: ListingFormProps) {
+	return (
+		<form
+			onSubmit={onSubmit}
+			className="space-y-4">
+			<div className="space-y-2">
+				<Label>Property *</Label>
+				<Select
+					value={formData.propertyId || ""}
+					onValueChange={(value) => onChange({ ...formData, propertyId: value })}>
+					<SelectTrigger>
+						<SelectValue placeholder="Select property" />
+					</SelectTrigger>
+					<SelectContent>
+						{properties.map((property) => (
+							<SelectItem
+								key={property.property_id}
+								value={property.property_id}>
+								{property.property_name}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</div>
+
+			<div className="space-y-2">
+				<Label>Listing Type *</Label>
+				<Select
+					value={formData.listingType || "pg_room"}
+					onValueChange={(value) =>
+						onChange({ ...formData, listingType: value as CreateListingInput["listingType"] })
+					}>
+					<SelectTrigger>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="pg_room">PG Room</SelectItem>
+						<SelectItem value="hostel_bed">Hostel Bed</SelectItem>
+					</SelectContent>
+				</Select>
+			</div>
+
+			<div className="space-y-2">
+				<Label htmlFor="listing-title">Title *</Label>
+				<Input
+					id="listing-title"
+					value={formData.title || ""}
+					onChange={(e) => onChange({ ...formData, title: e.target.value })}
+					placeholder="e.g., Spacious Single Room with AC"
+					required
+				/>
+			</div>
+
+			<div className="grid grid-cols-2 gap-4">
+				<div className="space-y-2">
+					<Label>Room Type *</Label>
+					<Select
+						value={formData.roomType || "single"}
+						onValueChange={(value) =>
+							onChange({ ...formData, roomType: value as CreateListingInput["roomType"] })
+						}>
+						<SelectTrigger>
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="single">Single</SelectItem>
+							<SelectItem value="double">Double</SelectItem>
+							<SelectItem value="triple">Triple</SelectItem>
+							<SelectItem value="entire_flat">Entire Flat</SelectItem>
+						</SelectContent>
+					</Select>
+				</div>
+
+				<div className="space-y-2">
+					<Label>Gender Preference</Label>
+					<Select
+						value={formData.preferredGender || "prefer_not_to_say"}
+						onValueChange={(value) =>
+							onChange({
+								...formData,
+								preferredGender: value as CreateListingInput["preferredGender"],
+							})
+						}>
+						<SelectTrigger>
+							<SelectValue />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="prefer_not_to_say">Any</SelectItem>
+							<SelectItem value="male">Male</SelectItem>
+							<SelectItem value="female">Female</SelectItem>
+						</SelectContent>
+					</Select>
+				</div>
+			</div>
+
+			<div className="grid grid-cols-2 gap-4">
+				<div className="space-y-2">
+					<Label htmlFor="listing-rent">Monthly Rent (₹) *</Label>
+					<Input
+						id="listing-rent"
+						type="number"
+						value={formData.rentPerMonth ?? ""}
+						onChange={(e) =>
+							onChange({ ...formData, rentPerMonth: e.target.value ? Number(e.target.value) : undefined })
+						}
+						placeholder="e.g., 8000"
+						min="0"
+						required
+					/>
+				</div>
+
+				<div className="space-y-2">
+					<Label htmlFor="listing-deposit">Deposit (₹)</Label>
+					<Input
+						id="listing-deposit"
+						type="number"
+						value={formData.depositAmount ?? ""}
+						onChange={(e) =>
+							onChange({
+								...formData,
+								depositAmount: e.target.value ? Number(e.target.value) : undefined,
+							})
+						}
+						placeholder="e.g., 16000"
+						min="0"
+					/>
+				</div>
+			</div>
+
+			<div className="grid grid-cols-2 gap-4">
+				<div className="space-y-2">
+					<Label htmlFor="listing-capacity">Capacity</Label>
+					<Input
+						id="listing-capacity"
+						type="number"
+						value={formData.totalCapacity ?? 1}
+						onChange={(e) => onChange({ ...formData, totalCapacity: Number(e.target.value) })}
+						min="1"
+						max="20"
+					/>
+				</div>
+
+				<div className="space-y-2">
+					<Label htmlFor="listing-available">Available From *</Label>
+					<Input
+						id="listing-available"
+						type="date"
+						value={formData.availableFrom || ""}
+						onChange={(e) => onChange({ ...formData, availableFrom: e.target.value })}
+						required
+					/>
+				</div>
+			</div>
+
+			<div className="space-y-2">
+				<Label htmlFor="listing-description">Description</Label>
+				<Textarea
+					id="listing-description"
+					value={formData.description || ""}
+					onChange={(e) => onChange({ ...formData, description: e.target.value })}
+					placeholder="Describe the room features, rules, etc."
+					rows={3}
+				/>
+			</div>
+
+			<DialogFooter>
+				<Button
+					type="submit"
+					disabled={isSubmitting}>
+					{isSubmitting ?
+						<>
+							<Loader2 className="size-4 animate-spin mr-2" />
+							Creating...
+						</>
+					:	"Create Listing"}
+				</Button>
+			</DialogFooter>
+		</form>
+	);
+}
+
+// ─── Page component ───────────────────────────────────────────────────────────
 function ListingsPage() {
 	const { property_id } = useSearch({ from: "/_auth/_pgowner/listings" });
 	const [listings, setListings] = useState<ListingSearchItem[]>([]);
@@ -47,8 +241,8 @@ function ListingsPage() {
 	const [deleteTarget, setDeleteTarget] = useState<ListingSearchItem | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
-	const [formData, setFormData] = useState<Partial<CreateListingInput>>({
-		propertyId: property_id || "",
+	const getDefaultFormData = (propId?: string): Partial<CreateListingInput> => ({
+		propertyId: propId || "",
 		listingType: "pg_room",
 		title: "",
 		description: "",
@@ -62,6 +256,8 @@ function ListingsPage() {
 		amenityIds: [],
 		preferences: [],
 	});
+
+	const [formData, setFormData] = useState<Partial<CreateListingInput>>(getDefaultFormData(property_id));
 
 	useEffect(() => {
 		fetchData();
@@ -91,21 +287,7 @@ function ListingsPage() {
 			toast.error("Please add a property first before creating listings");
 			return;
 		}
-		setFormData({
-			propertyId: property_id || (properties[0]?.property_id ?? ""),
-			listingType: "pg_room",
-			title: "",
-			description: "",
-			roomType: "single",
-			totalCapacity: 1,
-			rentPerMonth: 0,
-			depositAmount: 0,
-			availableFrom: new Date().toISOString().split("T")[0],
-			rentIncludesUtilities: false,
-			isNegotiable: false,
-			amenityIds: [],
-			preferences: [],
-		});
+		setFormData(getDefaultFormData(property_id || properties[0]?.property_id));
 		setIsCreateOpen(true);
 	};
 
@@ -185,178 +367,6 @@ function ListingsPage() {
 		}
 	};
 
-	const ListingForm = () => (
-		<form
-			onSubmit={handleSubmit}
-			className="space-y-4">
-			<div className="space-y-2">
-				<Label>Property *</Label>
-				<Select
-					value={formData.propertyId || ""}
-					onValueChange={(value) => setFormData({ ...formData, propertyId: value })}>
-					<SelectTrigger>
-						<SelectValue placeholder="Select property" />
-					</SelectTrigger>
-					<SelectContent>
-						{properties.map((property) => (
-							<SelectItem
-								key={property.property_id}
-								value={property.property_id}>
-								{property.property_name}
-							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
-			</div>
-
-			<div className="space-y-2">
-				<Label>Listing Type *</Label>
-				<Select
-					value={formData.listingType || "pg_room"}
-					onValueChange={(value) =>
-						setFormData({ ...formData, listingType: value as CreateListingInput["listingType"] })
-					}>
-					<SelectTrigger>
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="pg_room">PG Room</SelectItem>
-						<SelectItem value="hostel_bed">Hostel Bed</SelectItem>
-					</SelectContent>
-				</Select>
-			</div>
-
-			<div className="space-y-2">
-				<Label htmlFor="title">Title *</Label>
-				<Input
-					id="title"
-					value={formData.title || ""}
-					onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-					placeholder="e.g., Spacious Single Room with AC"
-					required
-				/>
-			</div>
-
-			<div className="grid grid-cols-2 gap-4">
-				<div className="space-y-2">
-					<Label>Room Type *</Label>
-					<Select
-						value={formData.roomType || "single"}
-						onValueChange={(value) =>
-							setFormData({ ...formData, roomType: value as CreateListingInput["roomType"] })
-						}>
-						<SelectTrigger>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="single">Single</SelectItem>
-							<SelectItem value="double">Double</SelectItem>
-							<SelectItem value="triple">Triple</SelectItem>
-							<SelectItem value="entire_flat">Entire Flat</SelectItem>
-						</SelectContent>
-					</Select>
-				</div>
-
-				<div className="space-y-2">
-					<Label>Gender Preference</Label>
-					<Select
-						value={formData.preferredGender || "prefer_not_to_say"}
-						onValueChange={(value) =>
-							setFormData({
-								...formData,
-								preferredGender: value as CreateListingInput["preferredGender"],
-							})
-						}>
-						<SelectTrigger>
-							<SelectValue />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="prefer_not_to_say">Any</SelectItem>
-							<SelectItem value="male">Male</SelectItem>
-							<SelectItem value="female">Female</SelectItem>
-						</SelectContent>
-					</Select>
-				</div>
-			</div>
-
-			<div className="grid grid-cols-2 gap-4">
-				<div className="space-y-2">
-					<Label htmlFor="rentPerMonth">Monthly Rent (₹) *</Label>
-					<Input
-						id="rentPerMonth"
-						type="number"
-						value={formData.rentPerMonth || ""}
-						onChange={(e) => setFormData({ ...formData, rentPerMonth: Number(e.target.value) })}
-						placeholder="e.g., 8000"
-						min="0"
-						required
-					/>
-				</div>
-
-				<div className="space-y-2">
-					<Label htmlFor="depositAmount">Deposit (₹)</Label>
-					<Input
-						id="depositAmount"
-						type="number"
-						value={formData.depositAmount || ""}
-						onChange={(e) => setFormData({ ...formData, depositAmount: Number(e.target.value) })}
-						placeholder="e.g., 16000"
-						min="0"
-					/>
-				</div>
-			</div>
-
-			<div className="grid grid-cols-2 gap-4">
-				<div className="space-y-2">
-					<Label htmlFor="totalCapacity">Capacity</Label>
-					<Input
-						id="totalCapacity"
-						type="number"
-						value={formData.totalCapacity || 1}
-						onChange={(e) => setFormData({ ...formData, totalCapacity: Number(e.target.value) })}
-						min="1"
-						max="20"
-					/>
-				</div>
-
-				<div className="space-y-2">
-					<Label htmlFor="availableFrom">Available From *</Label>
-					<Input
-						id="availableFrom"
-						type="date"
-						value={formData.availableFrom || ""}
-						onChange={(e) => setFormData({ ...formData, availableFrom: e.target.value })}
-						required
-					/>
-				</div>
-			</div>
-
-			<div className="space-y-2">
-				<Label htmlFor="description">Description</Label>
-				<Textarea
-					id="description"
-					value={formData.description || ""}
-					onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-					placeholder="Describe the room features, rules, etc."
-					rows={3}
-				/>
-			</div>
-
-			<DialogFooter>
-				<Button
-					type="submit"
-					disabled={isSubmitting}>
-					{isSubmitting ?
-						<>
-							<Loader2 className="size-4 animate-spin mr-2" />
-							Creating...
-						</>
-					:	"Create Listing"}
-				</Button>
-			</DialogFooter>
-		</form>
-	);
-
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center min-h-100">
@@ -388,7 +398,13 @@ function ListingsPage() {
 							<DialogTitle>Create New Listing</DialogTitle>
 							<DialogDescription>Add a new room listing to one of your properties</DialogDescription>
 						</DialogHeader>
-						<ListingForm />
+						<ListingForm
+							formData={formData}
+							onChange={setFormData}
+							onSubmit={handleSubmit}
+							isSubmitting={isSubmitting}
+							properties={properties}
+						/>
 					</DialogContent>
 				</Dialog>
 			</div>

@@ -14,8 +14,10 @@ import { formatCurrency } from "#/lib/format";
 import type { ListingSearchItem, ListingFilters } from "#/types";
 import { RoomType } from "#/types/enums";
 import { toast } from "#/components/ui/sonner";
-import { Search, Bed, MapPin, IndianRupee, Heart, Filter, X, Building2, Users, Loader2 } from "lucide-react";
+import { Search, Bed, MapPin, IndianRupee, Heart, Filter, X, Building2, Users, Loader2, Zap } from "lucide-react";
 import type { Cursor } from "#/types";
+import { useAuth } from "#/context/AuthContext";
+import { cn } from "#/lib/utils";
 
 export const Route = createFileRoute("/_auth/browse")({
 	component: BrowseListingsPage,
@@ -36,14 +38,37 @@ export const Route = createFileRoute("/_auth/browse")({
 	}),
 });
 
+function CompatibilityBadge({ score, available }: { score: number; available: boolean }) {
+	if (!available) return null;
+	const pct = Math.min(100, Math.round((score / 7) * 100)); // max 7 preference categories
+	const color =
+		pct >= 70 ?
+			"text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-950 dark:border-emerald-800"
+		: pct >= 40 ?
+			"text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-400 dark:bg-amber-950 dark:border-amber-800"
+		:	"text-slate-600 bg-slate-50 border-slate-200 dark:text-slate-400 dark:bg-slate-900 dark:border-slate-700";
+
+	return (
+		<div
+			className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border", color)}>
+			<Zap className="size-3" />
+			{score} match
+		</div>
+	);
+}
+
 function BrowseListingsPage() {
 	const searchParams = Route.useSearch();
+	const { role } = useAuth();
+	const isStudent = role === "student";
+
 	const [listings, setListings] = useState<ListingSearchItem[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isLoadingMore, setIsLoadingMore] = useState(false);
 	const [nextCursor, setNextCursor] = useState<Cursor | null>(null);
 	const [showFilters, setShowFilters] = useState(false);
 	const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+	const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
 
 	const [filters, setFilters] = useState<ListingFilters>({
 		city: searchParams.city || "",
@@ -105,7 +130,12 @@ function BrowseListingsPage() {
 		setShowFilters(false);
 	};
 
-	const handleToggleSave = async (listingId: string) => {
+	const handleToggleSave = async (e: React.MouseEvent, listingId: string) => {
+		e.preventDefault();
+		e.stopPropagation();
+		if (savingIds.has(listingId)) return;
+
+		setSavingIds((prev) => new Set(prev).add(listingId));
 		try {
 			if (savedIds.has(listingId)) {
 				await unsaveListing(listingId);
@@ -118,10 +148,16 @@ function BrowseListingsPage() {
 			} else {
 				await saveListing(listingId);
 				setSavedIds((prev) => new Set(prev).add(listingId));
-				toast.success("Saved to favorites");
+				toast.success("Saved to favourites");
 			}
 		} catch {
 			toast.error("Failed to update saved status");
+		} finally {
+			setSavingIds((prev) => {
+				const next = new Set(prev);
+				next.delete(listingId);
+				return next;
+			});
 		}
 	};
 
@@ -129,7 +165,7 @@ function BrowseListingsPage() {
 
 	if (isLoading) {
 		return (
-			<div className="flex items-center justify-center min-h-100">
+			<div className="flex items-center justify-center min-h-[60vh]">
 				<Loader2 className="size-8 animate-spin text-muted-foreground" />
 			</div>
 		);
@@ -139,11 +175,14 @@ function BrowseListingsPage() {
 		<div className="mx-auto max-w-6xl px-4 py-8 space-y-6">
 			<div>
 				<h1 className="text-2xl font-bold tracking-tight">Browse Listings</h1>
-				<p className="text-muted-foreground">Find your perfect PG accommodation</p>
+				<p className="text-muted-foreground text-sm mt-1">
+					Find your perfect PG, hostel, or shared room
+					{isStudent && " — matched to your preferences"}
+				</p>
 			</div>
 
-			{/* Search and Filters Bar */}
-			<div className="flex flex-col sm:flex-row gap-4">
+			{/* Search + Filters */}
+			<div className="flex flex-col sm:flex-row gap-3">
 				<div className="relative flex-1">
 					<Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
 					<Input
@@ -162,11 +201,12 @@ function BrowseListingsPage() {
 					{activeFilterCount > 0 && (
 						<Badge
 							variant="secondary"
-							className="ml-2">
+							className="ml-2 text-xs h-5 px-1.5">
 							{activeFilterCount}
 						</Badge>
 					)}
 				</Button>
+				<Button onClick={handleApplyFilters}>Search</Button>
 			</div>
 
 			{/* Filter Panel */}
@@ -268,99 +308,143 @@ function BrowseListingsPage() {
 				</Card>
 			)}
 
-			{/* Listings Grid */}
+			{/* Results */}
 			{listings.length === 0 ?
 				<EmptyState
 					icon={Building2}
 					title="No listings found"
-					description="Try adjusting your filters or search criteria to find more listings."
+					description="Try adjusting your filters or search criteria."
 					action={activeFilterCount > 0 ? { label: "Clear Filters", onClick: handleClearFilters } : undefined}
 				/>
 			:	<>
+					<p className="text-sm text-muted-foreground">
+						Showing {listings.length} listing{listings.length !== 1 ? "s" : ""}
+						{activeFilterCount > 0 && " (filtered)"}
+					</p>
 					<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
 						{listings.map((listing) => (
-							// Key uses the snake_case listing_id from the actual API response
 							<Card
 								key={listing.listing_id}
-								className="overflow-hidden hover:shadow-lg transition-shadow">
-								{/* Cover photo — snake_case field from backend */}
+								className="overflow-hidden hover:shadow-lg transition-all hover:-translate-y-0.5">
+								{/* Cover Photo */}
 								{listing.cover_photo_url && !listing.cover_photo_url.startsWith("processing:") && (
-									<div className="aspect-video bg-muted overflow-hidden">
+									<div className="aspect-video bg-muted overflow-hidden relative">
 										<img
 											src={listing.cover_photo_url}
 											alt={listing.title}
 											className="w-full h-full object-cover"
 										/>
+										{isStudent && listing.compatibilityAvailable && (
+											<div className="absolute top-2 left-2">
+												<CompatibilityBadge
+													score={listing.compatibilityScore}
+													available={listing.compatibilityAvailable}
+												/>
+											</div>
+										)}
 									</div>
 								)}
-								<CardHeader className="pb-3">
-									<div className="flex items-start justify-between">
+
+								<CardHeader className="pb-2 pt-4">
+									<div className="flex items-start justify-between gap-2">
 										<div className="flex-1 min-w-0">
 											<Link
 												to="/listing/$id"
 												params={{ id: listing.listing_id }}>
-												<CardTitle className="text-lg line-clamp-1 hover:text-primary transition-colors">
+												<CardTitle className="text-base line-clamp-1 hover:text-primary transition-colors cursor-pointer">
 													{listing.title}
 												</CardTitle>
 											</Link>
 											{listing.property_name && (
-												<CardDescription className="flex items-center gap-1 mt-1">
+												<CardDescription className="flex items-center gap-1 mt-0.5 text-xs">
 													<Building2 className="h-3 w-3" />
 													{listing.property_name}
 												</CardDescription>
 											)}
 										</div>
-										<Button
-											variant="ghost"
-											size="sm"
-											onClick={() => handleToggleSave(listing.listing_id)}
-											className={savedIds.has(listing.listing_id) ? "text-red-500" : ""}>
-											<Heart
-												className="h-5 w-5"
-												fill={savedIds.has(listing.listing_id) ? "currentColor" : "none"}
-											/>
-										</Button>
+										{isStudent && (
+											<Button
+												variant="ghost"
+												size="icon"
+												className="shrink-0 size-8 -mt-1"
+												onClick={(e) => handleToggleSave(e, listing.listing_id)}
+												disabled={savingIds.has(listing.listing_id)}>
+												{savingIds.has(listing.listing_id) ?
+													<Loader2 className="size-4 animate-spin" />
+												:	<Heart
+														className="size-4"
+														fill={
+															savedIds.has(listing.listing_id) ? "currentColor" : "none"
+														}
+														strokeWidth={savedIds.has(listing.listing_id) ? 0 : 2}
+														color={
+															savedIds.has(listing.listing_id) ? "var(--destructive)" : (
+																"currentColor"
+															)
+														}
+													/>
+												}
+											</Button>
+										)}
 									</div>
 								</CardHeader>
-								<CardContent className="space-y-3">
+
+								<CardContent className="space-y-3 pt-0">
 									<div className="flex items-center gap-1 text-sm text-muted-foreground">
-										<MapPin className="h-4 w-4" />
+										<MapPin className="h-3.5 w-3.5 shrink-0" />
 										{listing.city}
 										{listing.locality && `, ${listing.locality}`}
 									</div>
 
-									<div className="flex flex-wrap gap-2">
-										{/* room_type is snake_case from backend */}
-										<Badge variant="outline">
+									<div className="flex flex-wrap gap-1.5">
+										<Badge
+											variant="outline"
+											className="text-xs">
 											<Bed className="mr-1 h-3 w-3" />
 											{listing.room_type.replace(/_/g, " ")}
 										</Badge>
 										{listing.preferred_gender &&
 											listing.preferred_gender !== "prefer_not_to_say" && (
-												<Badge variant="outline">
+												<Badge
+													variant="outline"
+													className="text-xs">
 													<Users className="mr-1 h-3 w-3" />
 													{listing.preferred_gender}
 												</Badge>
 											)}
+										{/* Compatibility for photos-less cards */}
+										{isStudent && listing.compatibilityAvailable && !listing.cover_photo_url && (
+											<CompatibilityBadge
+												score={listing.compatibilityScore}
+												available={listing.compatibilityAvailable}
+											/>
+										)}
 									</div>
 
 									{listing.average_rating > 0 && (
 										<StarRating
 											rating={listing.average_rating}
 											size="sm"
+											showValue
 										/>
 									)}
 
-									<div className="flex items-center justify-between pt-2 border-t">
-										<div className="flex items-center text-primary font-semibold text-lg">
-											<IndianRupee className="h-4 w-4" />
+									<div className="flex items-center justify-between pt-1 border-t">
+										<div className="flex items-center text-primary font-bold">
+											<IndianRupee className="h-3.5 w-3.5" />
 											{formatCurrency(listing.rentPerMonth)}
-											<span className="text-sm font-normal text-muted-foreground">/mo</span>
+											<span className="text-xs font-normal text-muted-foreground ml-0.5">
+												/mo
+											</span>
 										</div>
 										<Link
 											to="/listing/$id"
 											params={{ id: listing.listing_id }}>
-											<Button size="sm">View Details</Button>
+											<Button
+												size="sm"
+												className="h-7 text-xs">
+												View Details
+											</Button>
 										</Link>
 									</div>
 								</CardContent>

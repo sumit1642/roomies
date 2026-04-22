@@ -32,6 +32,9 @@ export async function getMyConnections(
 	return res.data;
 }
 
+/**
+ * GET /connections/:connectionId — single connection with full details.
+ */
 export async function getConnection(connectionId: string): Promise<ConnectionDetail> {
 	const res = await apiFetch<ApiSuccess<ConnectionDetail>>(`/connections/${connectionId}`);
 	return res.data;
@@ -110,9 +113,6 @@ export const connectionsApi = {
 		}
 	},
 
-	// Declining a connection is not a backend concept at this stage.
-	// Declining happens via PATCH /interests/:id/status { status: "declined" }
-	// BEFORE a connection is created.
 	async rejectConnection(_connectionId: string): Promise<LegacyApiResponse<null>> {
 		return fail(
 			"Declining a connection is not supported after it has been created. " +

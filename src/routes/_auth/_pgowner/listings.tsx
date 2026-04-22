@@ -18,18 +18,40 @@ import { Label } from "#/components/ui/label";
 import { Textarea } from "#/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "#/components/ui/select";
 import { Separator } from "#/components/ui/separator";
+import { Avatar, AvatarFallback, AvatarImage } from "#/components/ui/avatar";
 import { EmptyState } from "#/components/EmptyState";
 import { ConfirmDialog } from "#/components/ConfirmDialog";
 import { AmenityPicker } from "#/components/AmenityPicker";
 import { PreferencePicker } from "#/components/PreferencePicker";
+import { StarRating } from "#/components/StarRating";
 import { searchListings, createListing, updateListingStatus, deleteListing } from "#/lib/api/listings";
 import { getMyProperties } from "#/lib/api/properties";
 import { getListingInterests, updateInterestStatus } from "#/lib/api/interests";
 import { formatCurrency } from "#/lib/format";
 import { toast } from "#/components/ui/sonner";
-import { Plus, Bed, IndianRupee, Trash2, ToggleLeft, ToggleRight, Users, Loader2, Eye } from "lucide-react";
+import {
+	Plus,
+	Bed,
+	IndianRupee,
+	Trash2,
+	ToggleLeft,
+	ToggleRight,
+	Users,
+	Loader2,
+	Eye,
+	Check,
+	X,
+	GraduationCap,
+	Mail,
+	Phone,
+	Star,
+	ChevronRight,
+	Heart,
+	MessageSquare,
+} from "lucide-react";
 import type { ListingSearchItem, PropertyListItem, InterestRequestWithStudent, PreferencePair } from "#/types";
 import type { CreateListingInput } from "#/lib/api/listings";
+import { formatDistanceToNow } from "date-fns";
 
 export const Route = createFileRoute("/_auth/_pgowner/listings")({
 	component: ListingsPage,
@@ -38,13 +60,11 @@ export const Route = createFileRoute("/_auth/_pgowner/listings")({
 	}),
 });
 
-// ─── Form data type ───────────────────────────────────────────────────────────
 type ListingFormData = Omit<Partial<CreateListingInput>, "amenityIds" | "preferences"> & {
 	amenityIds: string[];
 	preferences: PreferencePair[];
 };
 
-// ─── ListingForm defined OUTSIDE parent to avoid remount on render ─────────────
 interface ListingFormProps {
 	formData: ListingFormData;
 	onChange: (data: ListingFormData) => void;
@@ -58,7 +78,6 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 		<form
 			onSubmit={onSubmit}
 			className="space-y-5">
-			{/* Property selection */}
 			<div className="space-y-2">
 				<Label>Property *</Label>
 				<Select
@@ -79,7 +98,6 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 				</Select>
 			</div>
 
-			{/* Listing type */}
 			<div className="space-y-2">
 				<Label>Listing Type *</Label>
 				<Select
@@ -97,7 +115,6 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 				</Select>
 			</div>
 
-			{/* Title */}
 			<div className="space-y-2">
 				<Label htmlFor="listing-title">Title *</Label>
 				<Input
@@ -109,7 +126,6 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 				/>
 			</div>
 
-			{/* Room type + gender */}
 			<div className="grid grid-cols-2 gap-4">
 				<div className="space-y-2">
 					<Label>Room Type *</Label>
@@ -149,7 +165,6 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 				</div>
 			</div>
 
-			{/* Rent + Deposit */}
 			<div className="grid grid-cols-2 gap-4">
 				<div className="space-y-2">
 					<Label htmlFor="listing-rent">Monthly Rent (₹) *</Label>
@@ -183,10 +198,9 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 				</div>
 			</div>
 
-			{/* Capacity + Available from */}
 			<div className="grid grid-cols-2 gap-4">
 				<div className="space-y-2">
-					<Label htmlFor="listing-capacity">Capacity *</Label>
+					<Label htmlFor="listing-capacity">Total Capacity *</Label>
 					<Input
 						id="listing-capacity"
 						type="number"
@@ -208,24 +222,22 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 				</div>
 			</div>
 
-			{/* Description */}
 			<div className="space-y-2">
 				<Label htmlFor="listing-description">Description</Label>
 				<Textarea
 					id="listing-description"
 					value={formData.description || ""}
 					onChange={(e) => onChange({ ...formData, description: e.target.value })}
-					placeholder="Describe the room features, rules, etc."
+					placeholder="Describe the room features, rules, location highlights..."
 					rows={3}
 				/>
 			</div>
 
 			<Separator />
 
-			{/* Amenities */}
 			<div className="space-y-2">
 				<Label>Amenities</Label>
-				<p className="text-xs text-muted-foreground">Select all amenities available in this room</p>
+				<p className="text-xs text-muted-foreground">Select all amenities available for this listing</p>
 				<AmenityPicker
 					selectedIds={formData.amenityIds}
 					onChange={(ids) => onChange({ ...formData, amenityIds: ids })}
@@ -235,10 +247,11 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 
 			<Separator />
 
-			{/* Preferences */}
 			<div className="space-y-2">
 				<Label>Tenant Preferences</Label>
-				<p className="text-xs text-muted-foreground">Set lifestyle preferences for ideal tenants (optional)</p>
+				<p className="text-xs text-muted-foreground">
+					Set preferred lifestyle traits for ideal tenants (optional)
+				</p>
 				<PreferencePicker
 					value={formData.preferences}
 					onChange={(prefs) => onChange({ ...formData, preferences: prefs })}
@@ -263,16 +276,346 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 	);
 }
 
-// ─── Page component ───────────────────────────────────────────────────────────
+// ─── Student Detail Modal ─────────────────────────────────────────────────────
+function StudentDetailModal({
+	interest,
+	open,
+	onClose,
+	onAccept,
+	onDecline,
+}: {
+	interest: InterestRequestWithStudent | null;
+	open: boolean;
+	onClose: () => void;
+	onAccept: (id: string) => Promise<void>;
+	onDecline: (id: string) => Promise<void>;
+}) {
+	const [isActing, setIsActing] = useState<"accept" | "decline" | null>(null);
+
+	if (!interest) return null;
+
+	const { student } = interest;
+	const initial = student.fullName?.charAt(0)?.toUpperCase() ?? "?";
+
+	const handleAccept = async () => {
+		setIsActing("accept");
+		try {
+			await onAccept(interest.interestRequestId);
+			onClose();
+		} finally {
+			setIsActing(null);
+		}
+	};
+
+	const handleDecline = async () => {
+		setIsActing("decline");
+		try {
+			await onDecline(interest.interestRequestId);
+			onClose();
+		} finally {
+			setIsActing(null);
+		}
+	};
+
+	return (
+		<Dialog
+			open={open}
+			onOpenChange={(o) => !o && onClose()}>
+			<DialogContent className="max-w-lg">
+				<DialogHeader>
+					<DialogTitle>Student Interest Request</DialogTitle>
+					<DialogDescription>Review this student's profile and respond to their request</DialogDescription>
+				</DialogHeader>
+
+				<div className="space-y-5">
+					{/* Student Profile Header */}
+					<div className="flex items-start gap-4 p-4 bg-muted/40 rounded-xl">
+						<Avatar className="size-16 ring-2 ring-border">
+							{student.profilePhotoUrl && (
+								<AvatarImage
+									src={student.profilePhotoUrl}
+									alt={student.fullName}
+								/>
+							)}
+							<AvatarFallback className="bg-primary/10 text-primary text-xl font-bold">
+								{initial}
+							</AvatarFallback>
+						</Avatar>
+						<div className="flex-1 min-w-0">
+							<h3 className="text-lg font-bold">{student.fullName}</h3>
+							<p className="text-sm text-muted-foreground">Student</p>
+							{student.averageRating > 0 && (
+								<div className="flex items-center gap-1.5 mt-1.5">
+									<StarRating
+										rating={student.averageRating}
+										size="sm"
+									/>
+									<span className="text-xs text-muted-foreground">
+										{student.averageRating.toFixed(1)} rating
+									</span>
+								</div>
+							)}
+						</div>
+					</div>
+
+					{/* Student Details */}
+					<div className="space-y-3">
+						<h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+							Profile Details
+						</h4>
+						<div className="space-y-2">
+							<DetailRow
+								icon={GraduationCap}
+								label="Role"
+								value="Student"
+							/>
+							{student.averageRating > 0 && (
+								<DetailRow
+									icon={Star}
+									label="Rating"
+									value={`${student.averageRating.toFixed(1)} / 5.0`}
+								/>
+							)}
+						</div>
+					</div>
+
+					{/* Interest Message */}
+					{interest.message && (
+						<>
+							<Separator />
+							<div className="space-y-2">
+								<h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide flex items-center gap-1.5">
+									<MessageSquare className="size-3.5" />
+									Message
+								</h4>
+								<div className="p-3 bg-muted/50 rounded-lg border border-border/50">
+									<p className="text-sm italic">"{interest.message}"</p>
+								</div>
+							</div>
+						</>
+					)}
+
+					{/* Request Info */}
+					<div className="text-xs text-muted-foreground">
+						Sent {formatDistanceToNow(new Date(interest.createdAt), { addSuffix: true })}
+					</div>
+
+					<Separator />
+
+					{/* Actions */}
+					<div className="flex gap-3">
+						<Button
+							className="flex-1"
+							onClick={handleAccept}
+							disabled={!!isActing}>
+							{isActing === "accept" ?
+								<Loader2 className="size-4 animate-spin mr-2" />
+							:	<Check className="size-4 mr-2" />}
+							Accept Interest
+						</Button>
+						<Button
+							variant="outline"
+							className="flex-1 text-destructive border-destructive/30 hover:bg-destructive/10"
+							onClick={handleDecline}
+							disabled={!!isActing}>
+							{isActing === "decline" ?
+								<Loader2 className="size-4 animate-spin mr-2" />
+							:	<X className="size-4 mr-2" />}
+							Decline
+						</Button>
+					</div>
+				</div>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+function DetailRow({ icon: Icon, label, value }: { icon: typeof GraduationCap; label: string; value: string }) {
+	return (
+		<div className="flex items-center gap-3 text-sm">
+			<Icon className="size-4 text-muted-foreground shrink-0" />
+			<span className="text-muted-foreground w-20 shrink-0">{label}</span>
+			<span className="font-medium">{value}</span>
+		</div>
+	);
+}
+
+// ─── Interests Panel ──────────────────────────────────────────────────────────
+function InterestsPanelDialog({
+	listingId,
+	listingTitle,
+	open,
+	onClose,
+	onDataChange,
+}: {
+	listingId: string;
+	listingTitle: string;
+	open: boolean;
+	onClose: () => void;
+	onDataChange: () => void;
+}) {
+	const [interests, setInterests] = useState<InterestRequestWithStudent[]>([]);
+	const [isLoading, setIsLoading] = useState(false);
+	const [selectedInterest, setSelectedInterest] = useState<InterestRequestWithStudent | null>(null);
+	const [activeTab, setActiveTab] = useState<"pending" | "accepted">("pending");
+
+	useEffect(() => {
+		if (open) {
+			fetchInterests();
+		}
+	}, [open, listingId, activeTab]);
+
+	const fetchInterests = async () => {
+		setIsLoading(true);
+		try {
+			const res = await getListingInterests(listingId, activeTab as "pending" | "accepted");
+			setInterests(res.items);
+		} catch {
+			toast.error("Failed to load interest requests");
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	const handleAccept = async (interestId: string) => {
+		try {
+			await updateInterestStatus(interestId, "accepted");
+			toast.success("Interest accepted! A connection has been created.");
+			setInterests((prev) => prev.filter((i) => i.interestRequestId !== interestId));
+			onDataChange();
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : "Failed to accept";
+			toast.error(msg);
+		}
+	};
+
+	const handleDecline = async (interestId: string) => {
+		try {
+			await updateInterestStatus(interestId, "declined");
+			toast.success("Interest declined");
+			setInterests((prev) => prev.filter((i) => i.interestRequestId !== interestId));
+		} catch {
+			toast.error("Failed to decline");
+		}
+	};
+
+	return (
+		<>
+			<Dialog
+				open={open}
+				onOpenChange={(o) => !o && onClose()}>
+				<DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+					<DialogHeader>
+						<DialogTitle className="flex items-center gap-2">
+							<Heart className="size-4 text-rose-500" />
+							Interest Requests
+						</DialogTitle>
+						<DialogDescription className="line-clamp-1">{listingTitle}</DialogDescription>
+					</DialogHeader>
+
+					{/* Tab Toggle */}
+					<div className="flex gap-1 p-1 bg-muted rounded-lg">
+						<button
+							onClick={() => setActiveTab("pending")}
+							className={`flex-1 text-sm py-1.5 px-3 rounded-md transition-colors ${
+								activeTab === "pending" ?
+									"bg-background shadow-sm font-medium"
+								:	"text-muted-foreground hover:text-foreground"
+							}`}>
+							Pending
+						</button>
+						<button
+							onClick={() => setActiveTab("accepted")}
+							className={`flex-1 text-sm py-1.5 px-3 rounded-md transition-colors ${
+								activeTab === "accepted" ?
+									"bg-background shadow-sm font-medium"
+								:	"text-muted-foreground hover:text-foreground"
+							}`}>
+							Accepted
+						</button>
+					</div>
+
+					{isLoading ?
+						<div className="flex justify-center py-10">
+							<Loader2 className="size-6 animate-spin text-muted-foreground" />
+						</div>
+					: interests.length === 0 ?
+						<div className="text-center py-10">
+							<Users className="size-8 text-muted-foreground mx-auto mb-2" />
+							<p className="text-sm text-muted-foreground">No {activeTab} interest requests</p>
+						</div>
+					:	<div className="space-y-3">
+							{interests.map((interest) => (
+								<Card
+									key={interest.interestRequestId}
+									className="cursor-pointer hover:shadow-sm transition-shadow"
+									onClick={() => setSelectedInterest(interest)}>
+									<CardContent className="p-4">
+										<div className="flex items-start gap-3">
+											<Avatar className="size-10 shrink-0">
+												{interest.student.profilePhotoUrl && (
+													<AvatarImage
+														src={interest.student.profilePhotoUrl}
+														alt={interest.student.fullName}
+													/>
+												)}
+												<AvatarFallback className="bg-primary/10 text-primary font-semibold">
+													{interest.student.fullName?.charAt(0)?.toUpperCase() ?? "?"}
+												</AvatarFallback>
+											</Avatar>
+											<div className="flex-1 min-w-0">
+												<div className="flex items-start justify-between gap-2">
+													<p className="font-semibold text-sm">{interest.student.fullName}</p>
+													<ChevronRight className="size-4 text-muted-foreground shrink-0 mt-0.5" />
+												</div>
+												{interest.student.averageRating > 0 && (
+													<StarRating
+														rating={interest.student.averageRating}
+														size="sm"
+													/>
+												)}
+												{interest.message && (
+													<p className="text-xs text-muted-foreground mt-1 line-clamp-1 italic">
+														"{interest.message}"
+													</p>
+												)}
+												<p className="text-xs text-muted-foreground mt-1">
+													{formatDistanceToNow(new Date(interest.createdAt), {
+														addSuffix: true,
+													})}
+												</p>
+											</div>
+										</div>
+									</CardContent>
+								</Card>
+							))}
+						</div>
+					}
+				</DialogContent>
+			</Dialog>
+
+			<StudentDetailModal
+				interest={selectedInterest}
+				open={!!selectedInterest}
+				onClose={() => setSelectedInterest(null)}
+				onAccept={handleAccept}
+				onDecline={handleDecline}
+			/>
+		</>
+	);
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 function ListingsPage() {
 	const { property_id } = useSearch({ from: "/_auth/_pgowner/listings" });
 	const [listings, setListings] = useState<ListingSearchItem[]>([]);
 	const [properties, setProperties] = useState<PropertyListItem[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
-	const [viewInterestsListingId, setViewInterestsListingId] = useState<string | null>(null);
-	const [interests, setInterests] = useState<InterestRequestWithStudent[]>([]);
-	const [interestsLoading, setInterestsLoading] = useState(false);
+	const [interestsPanelState, setInterestsPanelState] = useState<{
+		listingId: string;
+		listingTitle: string;
+	} | null>(null);
 	const [deleteTarget, setDeleteTarget] = useState<ListingSearchItem | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [toggleLoading, setToggleLoading] = useState<string | null>(null);
@@ -333,7 +676,7 @@ function ListingsPage() {
 			toast.error("Please fill in all required fields");
 			return;
 		}
-		if (!formData.rentPerMonth && formData.rentPerMonth !== 0) {
+		if (formData.rentPerMonth === undefined || formData.rentPerMonth === null) {
 			toast.error("Monthly rent is required");
 			return;
 		}
@@ -372,8 +715,6 @@ function ListingsPage() {
 	};
 
 	const handleToggleStatus = async (listing: ListingSearchItem) => {
-		// Determine the new status. 'filled' listings can only be deactivated,
-		// 'deactivated' can become 'active', 'active' becomes 'deactivated'.
 		const newStatus =
 			listing.status === "active" ? "deactivated"
 			: listing.status === "deactivated" ? "active"
@@ -397,44 +738,9 @@ function ListingsPage() {
 		}
 	};
 
-	const handleViewInterests = async (listingId: string) => {
-		setViewInterestsListingId(listingId);
-		setInterestsLoading(true);
-		try {
-			const res = await getListingInterests(listingId, "pending");
-			setInterests(res.items);
-		} catch {
-			toast.error("Failed to load interests");
-		} finally {
-			setInterestsLoading(false);
-		}
-	};
-
-	const handleAcceptInterest = async (interestId: string) => {
-		try {
-			await updateInterestStatus(interestId, "accepted");
-			toast.success("Interest accepted! A connection has been created.");
-			setInterests((prev) => prev.filter((i) => i.interestRequestId !== interestId));
-			fetchData(); // refresh listing occupancy counts
-		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Failed to accept interest";
-			toast.error(msg);
-		}
-	};
-
-	const handleDeclineInterest = async (interestId: string) => {
-		try {
-			await updateInterestStatus(interestId, "declined");
-			toast.success("Interest declined");
-			setInterests((prev) => prev.filter((i) => i.interestRequestId !== interestId));
-		} catch {
-			toast.error("Failed to decline interest");
-		}
-	};
-
 	if (isLoading) {
 		return (
-			<div className="flex items-center justify-center min-h-100">
+			<div className="flex items-center justify-center min-h-[60vh]">
 				<Loader2 className="size-8 animate-spin text-muted-foreground" />
 			</div>
 		);
@@ -474,64 +780,6 @@ function ListingsPage() {
 				</Dialog>
 			</div>
 
-			{/* Interests Dialog */}
-			<Dialog
-				open={!!viewInterestsListingId}
-				onOpenChange={(open) => !open && setViewInterestsListingId(null)}>
-				<DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
-					<DialogHeader>
-						<DialogTitle>Interest Requests</DialogTitle>
-						<DialogDescription>Students who expressed interest in this listing</DialogDescription>
-					</DialogHeader>
-					{interestsLoading ?
-						<div className="flex justify-center py-8">
-							<Loader2 className="size-8 animate-spin text-muted-foreground" />
-						</div>
-					: interests.length === 0 ?
-						<p className="text-center text-muted-foreground py-8">No pending interests</p>
-					:	<div className="space-y-3">
-							{interests.map((interest) => (
-								<Card key={interest.interestRequestId}>
-									<CardContent className="p-4">
-										<div className="flex items-start justify-between gap-3">
-											<div>
-												<p className="font-medium">{interest.student.fullName}</p>
-												{interest.student.averageRating > 0 && (
-													<p className="text-xs text-muted-foreground">
-														Rating: {interest.student.averageRating.toFixed(1)}
-													</p>
-												)}
-												{interest.message && (
-													<p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-														&ldquo;{interest.message}&rdquo;
-													</p>
-												)}
-												<p className="text-xs text-muted-foreground mt-1">
-													{new Date(interest.createdAt).toLocaleDateString()}
-												</p>
-											</div>
-											<div className="flex gap-2 shrink-0">
-												<Button
-													size="sm"
-													onClick={() => handleAcceptInterest(interest.interestRequestId)}>
-													Accept
-												</Button>
-												<Button
-													size="sm"
-													variant="outline"
-													onClick={() => handleDeclineInterest(interest.interestRequestId)}>
-													Decline
-												</Button>
-											</div>
-										</div>
-									</CardContent>
-								</Card>
-							))}
-						</div>
-					}
-				</DialogContent>
-			</Dialog>
-
 			{listings.length === 0 ?
 				<EmptyState
 					icon={Bed}
@@ -553,58 +801,78 @@ function ListingsPage() {
 						return (
 							<Card
 								key={listing.listing_id}
-								className="overflow-hidden">
+								className="overflow-hidden transition-shadow hover:shadow-md">
 								<CardHeader className="pb-3">
-									<div className="flex items-start justify-between">
-										<CardTitle className="text-base line-clamp-1">{listing.title}</CardTitle>
+									<div className="flex items-start justify-between gap-2">
+										<div className="flex-1 min-w-0">
+											<CardTitle className="text-base line-clamp-1">{listing.title}</CardTitle>
+											<CardDescription className="text-xs mt-0.5">
+												{listing.city}
+												{listing.locality && `, ${listing.locality}`}
+											</CardDescription>
+										</div>
 										<Badge
 											variant={
 												listing.status === "active" ? "success"
 												: listing.status === "filled" ?
 													"info"
 												:	"secondary"
-											}>
+											}
+											className="shrink-0">
 											{listing.status}
 										</Badge>
 									</div>
-									<CardDescription>
-										{listing.city}
-										{listing.locality && `, ${listing.locality}`}
-									</CardDescription>
 								</CardHeader>
+
 								<CardContent className="space-y-3">
-									<div className="flex flex-wrap gap-2">
-										<Badge variant="outline">
+									<div className="flex flex-wrap gap-1.5">
+										<Badge
+											variant="outline"
+											className="text-xs">
 											<Bed className="mr-1 h-3 w-3" />
 											{listing.room_type.replace(/_/g, " ")}
 										</Badge>
 										{listing.preferred_gender &&
 											listing.preferred_gender !== "prefer_not_to_say" && (
-												<Badge variant="outline">
+												<Badge
+													variant="outline"
+													className="text-xs">
 													<Users className="mr-1 h-3 w-3" />
 													{listing.preferred_gender}
 												</Badge>
 											)}
 									</div>
 
-									<div className="flex items-center text-primary font-semibold">
+									<div className="flex items-center text-primary font-bold">
 										<IndianRupee className="h-4 w-4" />
-										{formatCurrency(listing.rentPerMonth)}/mo
+										{formatCurrency(listing.rentPerMonth)}
+										<span className="text-xs font-normal text-muted-foreground ml-0.5">/mo</span>
 									</div>
 
-									<div className="flex items-center gap-2 pt-2 border-t">
+									<Separator />
+
+									<div className="flex items-center gap-1.5 flex-wrap">
+										{/* View Interests */}
 										<Button
-											variant="ghost"
+											variant="outline"
 											size="sm"
-											onClick={() => handleViewInterests(listing.listing_id)}
-											className="flex-1">
-											<Eye className="mr-1 h-4 w-4" />
+											className="h-8 text-xs flex-1 min-w-[100px]"
+											onClick={() =>
+												setInterestsPanelState({
+													listingId: listing.listing_id,
+													listingTitle: listing.title,
+												})
+											}>
+											<Heart className="mr-1.5 h-3.5 w-3.5 text-rose-500" />
 											Interests
 										</Button>
+
+										{/* Toggle Active/Deactivated */}
 										{canToggle && (
 											<Button
 												variant="ghost"
 												size="sm"
+												className="h-8 px-2.5"
 												onClick={() => handleToggleStatus(listing)}
 												disabled={toggleLoading === listing.listing_id}
 												title={
@@ -615,15 +883,17 @@ function ListingsPage() {
 												{toggleLoading === listing.listing_id ?
 													<Loader2 className="h-4 w-4 animate-spin" />
 												: listing.status === "active" ?
-													<ToggleRight className="h-4 w-4 text-green-600" />
-												:	<ToggleLeft className="h-4 w-4" />}
+													<ToggleRight className="h-4 w-4 text-emerald-600" />
+												:	<ToggleLeft className="h-4 w-4 text-muted-foreground" />}
 											</Button>
 										)}
+
+										{/* Delete */}
 										<Button
 											variant="ghost"
 											size="sm"
-											onClick={() => setDeleteTarget(listing)}
-											className="text-destructive hover:text-destructive">
+											className="h-8 px-2.5 text-destructive hover:text-destructive hover:bg-destructive/10"
+											onClick={() => setDeleteTarget(listing)}>
 											<Trash2 className="h-4 w-4" />
 										</Button>
 									</div>
@@ -634,11 +904,22 @@ function ListingsPage() {
 				</div>
 			}
 
+			{/* Interests Panel */}
+			{interestsPanelState && (
+				<InterestsPanelDialog
+					listingId={interestsPanelState.listingId}
+					listingTitle={interestsPanelState.listingTitle}
+					open={true}
+					onClose={() => setInterestsPanelState(null)}
+					onDataChange={fetchData}
+				/>
+			)}
+
 			<ConfirmDialog
 				open={!!deleteTarget}
 				onOpenChange={(open) => !open && setDeleteTarget(null)}
 				title="Delete Listing"
-				description={`Are you sure you want to delete "${deleteTarget?.title}"? This action cannot be undone.`}
+				description={`Are you sure you want to delete "${deleteTarget?.title}"? This action cannot be undone and will expire all pending interest requests.`}
 				confirmLabel="Delete"
 				onConfirm={handleDelete}
 				variant="destructive"

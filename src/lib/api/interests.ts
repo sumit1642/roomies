@@ -1,3 +1,4 @@
+// src/lib/api/interests.ts
 import { apiFetch } from "../api";
 import type {
 	ApiSuccess,
@@ -38,10 +39,10 @@ export async function getMyInterests(
 	return res.data;
 }
 
-// PG Owner: get interests for a listing
+// PG Owner: get interests for a listing (with optional status filter)
 export async function getListingInterests(
 	listingId: string,
-	status?: RequestStatus,
+	status?: RequestStatus | "accepted",
 	cursor?: Cursor,
 ): Promise<PaginatedResponse<InterestRequestWithStudent>> {
 	const searchParams = new URLSearchParams();

@@ -12,6 +12,7 @@ import {
 	CheckCircle,
 	Clock,
 	ArrowRight,
+	Star,
 } from "lucide-react";
 import { Button } from "#/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "#/components/ui/card";
@@ -24,6 +25,8 @@ import { getSavedListings } from "#/lib/api/listings";
 import { getMyProperties } from "#/lib/api/properties";
 import { getStudentProfile, getPgOwnerProfile } from "#/lib/api/profiles";
 import type { Notification, StudentProfile, PgOwnerProfile } from "#/types";
+import { formatDistanceToNow } from "date-fns";
+import { StarRating } from "#/components/StarRating";
 
 export const Route = createFileRoute("/_auth/dashboard")({
 	component: DashboardPage,
@@ -52,6 +55,7 @@ function DashboardPage() {
 function StudentDashboard({ userId, isEmailVerified }: { userId: string; isEmailVerified: boolean }) {
 	const [profile, setProfile] = useState<StudentProfile | null>(null);
 	const [pendingInterests, setPendingInterests] = useState(0);
+	const [acceptedInterests, setAcceptedInterests] = useState(0);
 	const [confirmedConnections, setConfirmedConnections] = useState(0);
 	const [savedCount, setSavedCount] = useState(0);
 	const [recentNotifications, setRecentNotifications] = useState<Notification[]>([]);
@@ -59,53 +63,73 @@ function StudentDashboard({ userId, isEmailVerified }: { userId: string; isEmail
 
 	useEffect(() => {
 		if (!userId) return;
+		let cancelled = false;
 		async function fetchData() {
 			try {
-				const [profileData, interests, connections, saved, notifications] = await Promise.all([
+				const [profileData, interests, acceptedRes, connections, saved, notifications] = await Promise.all([
 					getStudentProfile(userId),
 					getMyInterests("pending"),
+					getMyInterests("accepted"),
 					getMyConnections("confirmed"),
 					getSavedListings(),
 					getNotifications(false),
 				]);
-
+				if (cancelled) return;
 				setProfile(profileData);
 				setPendingInterests(interests.items.length);
+				setAcceptedInterests(acceptedRes.items.length);
 				setConfirmedConnections(connections.items.length);
 				setSavedCount(saved.items.length);
-				setRecentNotifications(notifications.items.slice(0, 3));
+				setRecentNotifications(notifications.items.slice(0, 4));
 			} catch {
-				// Silently handle errors
+				// Silently handle
 			} finally {
-				setIsLoading(false);
+				if (!cancelled) setIsLoading(false);
 			}
 		}
 		fetchData();
+		return () => {
+			cancelled = true;
+		};
 	}, [userId]);
 
 	return (
-		<div className="mx-auto max-w-6xl px-4 py-8">
-			{/* Welcome Banner */}
-			<div className="mb-8">
-				<h1 className="text-3xl font-bold text-(--sea-ink)">
-					{/* full_name is snake_case from StudentProfile */}
-					Welcome back{profile?.full_name ? `, ${profile.full_name.split(" ")[0]}` : ""}!
-				</h1>
-				<p className="mt-1 text-muted-foreground">Find your perfect accommodation today</p>
+		<div className="mx-auto max-w-6xl px-4 py-8 space-y-6">
+			{/* Welcome */}
+			<div className="flex items-start justify-between flex-wrap gap-4">
+				<div>
+					<h1 className="text-3xl font-bold text-(--sea-ink)">
+						Welcome back{profile?.full_name ? `, ${profile.full_name.split(" ")[0]}` : ""}!
+					</h1>
+					<p className="mt-1 text-muted-foreground">Find your perfect accommodation today</p>
+				</div>
+				{profile && (
+					<div className="flex items-center gap-3 text-sm">
+						{profile.average_rating > 0 && (
+							<div className="flex items-center gap-1.5">
+								<StarRating
+									rating={profile.average_rating}
+									size="sm"
+								/>
+								<span className="text-muted-foreground">
+									{profile.average_rating.toFixed(1)} ({profile.rating_count})
+								</span>
+							</div>
+						)}
+					</div>
+				)}
 			</div>
 
 			{/* Email Verification Banner */}
 			{!isEmailVerified && (
-				<Card className="mb-6 border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950">
+				<Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950">
 					<CardContent className="flex items-center justify-between p-4">
 						<div className="flex items-center gap-3">
-							<AlertCircle className="size-5 text-amber-600" />
+							<AlertCircle className="size-5 text-amber-600 shrink-0" />
 							<div>
-								<p className="font-medium text-amber-800 dark:text-amber-200">
-									Your email is not verified
-								</p>
+								<p className="font-semibold text-amber-800 dark:text-amber-200">Verify your email</p>
 								<p className="text-sm text-amber-700 dark:text-amber-300">
-									Verify your email to unlock full access to Roomies
+									Unlock full access — send interest requests and connect with PG owners
 								</p>
 							</div>
 						</div>
@@ -120,20 +144,30 @@ function StudentDashboard({ userId, isEmailVerified }: { userId: string; isEmail
 			)}
 
 			{/* Stats Grid */}
-			<div className="mb-8 grid gap-4 sm:grid-cols-3">
+			<div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
 				<StatCard
 					icon={Heart}
 					label="Pending Interests"
 					value={pendingInterests}
 					href="/interests"
 					isLoading={isLoading}
+					accent="rose"
+				/>
+				<StatCard
+					icon={CheckCircle}
+					label="Accepted Interests"
+					value={acceptedInterests}
+					href="/interests"
+					isLoading={isLoading}
+					accent="emerald"
 				/>
 				<StatCard
 					icon={Users}
-					label="Confirmed Connections"
+					label="Confirmed Stays"
 					value={confirmedConnections}
 					href="/connections"
 					isLoading={isLoading}
+					accent="blue"
 				/>
 				<StatCard
 					icon={Bookmark}
@@ -141,25 +175,27 @@ function StudentDashboard({ userId, isEmailVerified }: { userId: string; isEmail
 					value={savedCount}
 					href="/saved"
 					isLoading={isLoading}
+					accent="violet"
 				/>
 			</div>
 
 			{/* CTA */}
-			<Card className="mb-8">
+			<Card className="bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
 				<CardContent className="flex flex-col items-center justify-between gap-4 p-6 sm:flex-row">
 					<div>
 						<h3 className="text-lg font-semibold">Find Your Perfect Room</h3>
 						<p className="text-sm text-muted-foreground">
-							Browse verified PGs, hostels, and roommate listings
+							Browse verified PGs, hostels, and shared listings with compatibility matching
 						</p>
 					</div>
 					<Button
 						size="lg"
-						asChild>
+						asChild
+						className="shrink-0">
 						<Link
 							to="/browse"
 							search={{}}>
-							<Search className="size-4" />
+							<Search className="size-4 mr-2" />
 							Browse Listings
 						</Link>
 					</Button>
@@ -168,10 +204,10 @@ function StudentDashboard({ userId, isEmailVerified }: { userId: string; isEmail
 
 			{/* Recent Notifications */}
 			<Card>
-				<CardHeader className="flex flex-row items-center justify-between">
+				<CardHeader className="flex flex-row items-center justify-between pb-3">
 					<div>
-						<CardTitle>Recent Notifications</CardTitle>
-						<CardDescription>Stay updated on your activity</CardDescription>
+						<CardTitle>Recent Activity</CardTitle>
+						<CardDescription>Your latest notifications</CardDescription>
 					</div>
 					<Button
 						variant="ghost"
@@ -179,25 +215,25 @@ function StudentDashboard({ userId, isEmailVerified }: { userId: string; isEmail
 						asChild>
 						<Link to="/notifications">
 							View All
-							<ArrowRight className="size-4" />
+							<ArrowRight className="size-4 ml-1" />
 						</Link>
 					</Button>
 				</CardHeader>
 				<CardContent>
 					{recentNotifications.length === 0 ?
-						<p className="text-center text-sm text-muted-foreground py-4">No new notifications</p>
-					:	<div className="space-y-3">
+						<p className="text-center text-sm text-muted-foreground py-6">No new notifications</p>
+					:	<div className="space-y-2">
 							{recentNotifications.map((notification) => (
 								<div
 									key={notification.notificationId}
-									className="flex items-start gap-3 rounded-lg border p-3">
-									<div className="mt-0.5">
-										<div className="size-2 rounded-full bg-primary" />
-									</div>
+									className="flex items-start gap-3 rounded-lg p-3 bg-muted/40 hover:bg-muted/60 transition-colors">
+									<div className="size-2 rounded-full bg-primary mt-2 shrink-0" />
 									<div className="flex-1 min-w-0">
-										<p className="text-sm">{notification.message}</p>
-										<p className="text-xs text-muted-foreground mt-1">
-											{new Date(notification.createdAt).toLocaleDateString()}
+										<p className="text-sm font-medium line-clamp-1">{notification.message}</p>
+										<p className="text-xs text-muted-foreground mt-0.5">
+											{formatDistanceToNow(new Date(notification.createdAt), {
+												addSuffix: true,
+											})}
 										</p>
 									</div>
 								</div>
@@ -213,66 +249,86 @@ function StudentDashboard({ userId, isEmailVerified }: { userId: string; isEmail
 function PgOwnerDashboard({ userId }: { userId: string }) {
 	const [profile, setProfile] = useState<PgOwnerProfile | null>(null);
 	const [activeListings, setActiveListings] = useState(0);
+	const [propertyCount, setPropertyCount] = useState(0);
 	const [confirmedConnections, setConfirmedConnections] = useState(0);
+	const [pendingConnections, setPendingConnections] = useState(0);
+	const [recentNotifications, setRecentNotifications] = useState<Notification[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
 
 	useEffect(() => {
 		if (!userId) return;
+		let cancelled = false;
 		async function fetchData() {
 			try {
-				const [profileData, properties, connections] = await Promise.all([
+				const [profileData, properties, allConnections, confirmedConn, notifications] = await Promise.all([
 					getPgOwnerProfile(userId),
 					getMyProperties(),
+					getMyConnections(),
 					getMyConnections("confirmed"),
+					getNotifications(false),
 				]);
-
+				if (cancelled) return;
 				setProfile(profileData);
-				// active_listing_count is snake_case from PropertyListItem
+				setPropertyCount(properties.items.length);
 				const listings = properties.items.reduce((sum, p) => sum + p.active_listing_count, 0);
 				setActiveListings(listings);
-				setConfirmedConnections(connections.items.length);
+				setConfirmedConnections(confirmedConn.items.length);
+				setPendingConnections(allConnections.items.filter((c) => c.confirmationStatus !== "confirmed").length);
+				setRecentNotifications(notifications.items.slice(0, 4));
 			} catch {
-				// Silently handle errors
+				// Silently handle
 			} finally {
-				setIsLoading(false);
+				if (!cancelled) setIsLoading(false);
 			}
 		}
 		fetchData();
+		return () => {
+			cancelled = true;
+		};
 	}, [userId]);
 
-	// verification_status is snake_case from PgOwnerProfile
 	const verificationStatus = profile?.verification_status || "unverified";
 
 	return (
-		<div className="mx-auto max-w-6xl px-4 py-8">
-			{/* Welcome Banner */}
-			<div className="mb-8 flex items-start justify-between">
+		<div className="mx-auto max-w-6xl px-4 py-8 space-y-6">
+			{/* Welcome */}
+			<div className="flex items-start justify-between flex-wrap gap-4">
 				<div>
-					<div className="flex items-center gap-3">
+					<div className="flex items-center gap-3 flex-wrap">
 						<h1 className="text-3xl font-bold text-(--sea-ink)">
-							{/* owner_full_name is snake_case from PgOwnerProfile */}
 							Welcome{profile?.owner_full_name ? `, ${profile.owner_full_name.split(" ")[0]}` : ""}!
 						</h1>
 						<VerificationBadge status={verificationStatus} />
 					</div>
-					<p className="mt-1 text-muted-foreground">Manage your properties and listings</p>
+					{profile?.business_name && <p className="mt-1 text-muted-foreground">{profile.business_name}</p>}
 				</div>
+				{profile && profile.average_rating > 0 && (
+					<div className="flex items-center gap-1.5 text-sm">
+						<StarRating
+							rating={profile.average_rating}
+							size="sm"
+						/>
+						<span className="text-muted-foreground">
+							{profile.average_rating.toFixed(1)} ({profile.rating_count} reviews)
+						</span>
+					</div>
+				)}
 			</div>
 
-			{/* Verification Banner */}
+			{/* Verification Banners */}
 			{(verificationStatus === "unverified" || verificationStatus === "rejected") && (
-				<Card className="mb-6 border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950">
+				<Card className="border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950">
 					<CardContent className="flex items-center justify-between p-4">
 						<div className="flex items-center gap-3">
-							<AlertCircle className="size-5 text-amber-600" />
+							<AlertCircle className="size-5 text-amber-600 shrink-0" />
 							<div>
-								<p className="font-medium text-amber-800 dark:text-amber-200">
+								<p className="font-semibold text-amber-800 dark:text-amber-200">
 									{verificationStatus === "rejected" ?
-										"Your verification was rejected"
-									:	"Your account is not verified"}
+										"Verification rejected — resubmit documents"
+									:	"Account not verified yet"}
 								</p>
 								<p className="text-sm text-amber-700 dark:text-amber-300">
-									Upload documents to get listed and receive interest requests
+									Upload documents to start receiving interest requests from students
 								</p>
 							</div>
 						</div>
@@ -280,20 +336,20 @@ function PgOwnerDashboard({ userId }: { userId: string }) {
 							variant="outline"
 							size="sm"
 							asChild>
-							<Link to="/profile">Upload Documents</Link>
+							<Link to="/profile">Upload Docs</Link>
 						</Button>
 					</CardContent>
 				</Card>
 			)}
 
 			{verificationStatus === "pending" && (
-				<Card className="mb-6 border-sky-200 bg-sky-50 dark:border-sky-900 dark:bg-sky-950">
+				<Card className="border-sky-200 bg-sky-50 dark:border-sky-900 dark:bg-sky-950">
 					<CardContent className="flex items-center gap-3 p-4">
-						<Clock className="size-5 text-sky-600" />
+						<Clock className="size-5 text-sky-600 shrink-0" />
 						<div>
-							<p className="font-medium text-sky-800 dark:text-sky-200">Verification under review</p>
+							<p className="font-semibold text-sky-800 dark:text-sky-200">Verification under review</p>
 							<p className="text-sm text-sky-700 dark:text-sky-300">
-								We&apos;re reviewing your documents. This usually takes 1-2 business days.
+								Our team will review your documents within 2–3 business days.
 							</p>
 						</div>
 					</CardContent>
@@ -301,20 +357,30 @@ function PgOwnerDashboard({ userId }: { userId: string }) {
 			)}
 
 			{/* Stats Grid */}
-			<div className="mb-8 grid gap-4 sm:grid-cols-3">
+			<div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
 				<StatCard
 					icon={Building2}
-					label="Active Listings"
-					value={activeListings}
+					label="Properties"
+					value={propertyCount}
 					href="/properties"
 					isLoading={isLoading}
+					accent="teal"
 				/>
 				<StatCard
 					icon={Heart}
-					label="Pending Requests"
-					value={0}
-					href="/properties"
+					label="Active Listings"
+					value={activeListings}
+					href="/listings"
 					isLoading={isLoading}
+					accent="rose"
+				/>
+				<StatCard
+					icon={Clock}
+					label="Pending Confirmations"
+					value={pendingConnections}
+					href="/connections"
+					isLoading={isLoading}
+					accent="amber"
 				/>
 				<StatCard
 					icon={Users}
@@ -322,30 +388,32 @@ function PgOwnerDashboard({ userId }: { userId: string }) {
 					value={confirmedConnections}
 					href="/connections"
 					isLoading={isLoading}
+					accent="emerald"
 				/>
 			</div>
 
 			{/* Quick Actions */}
-			<div className="mb-8 grid gap-4 sm:grid-cols-2">
-				<Card>
-					<CardContent className="flex items-center justify-between p-6">
+			<div className="grid gap-4 sm:grid-cols-2">
+				<Card className="hover:shadow-md transition-shadow cursor-pointer">
+					<CardContent className="flex items-center justify-between p-5">
 						<div>
 							<h3 className="font-semibold">Add New Property</h3>
-							<p className="text-sm text-muted-foreground">Register a new PG or hostel</p>
+							<p className="text-sm text-muted-foreground">Register a PG, hostel or apartment</p>
 						</div>
 						<Button asChild>
 							<Link to="/properties">
-								<Plus className="size-4" />
+								<Plus className="size-4 mr-1.5" />
 								Add Property
 							</Link>
 						</Button>
 					</CardContent>
 				</Card>
-				<Card>
-					<CardContent className="flex items-center justify-between p-6">
+
+				<Card className="hover:shadow-md transition-shadow cursor-pointer">
+					<CardContent className="flex items-center justify-between p-5">
 						<div>
-							<h3 className="font-semibold">Create Listing</h3>
-							<p className="text-sm text-muted-foreground">Add a room or bed listing</p>
+							<h3 className="font-semibold">Manage Listings</h3>
+							<p className="text-sm text-muted-foreground">Create rooms and view interest requests</p>
 						</div>
 						<Button
 							variant="outline"
@@ -353,16 +421,69 @@ function PgOwnerDashboard({ userId }: { userId: string }) {
 							<Link
 								to="/listings"
 								search={{ property_id: undefined }}>
-								<Plus className="size-4" />
-								New Listing
+								<Heart className="size-4 mr-1.5" />
+								View Interests
 							</Link>
 						</Button>
 					</CardContent>
 				</Card>
 			</div>
+
+			{/* Recent Notifications */}
+			<Card>
+				<CardHeader className="flex flex-row items-center justify-between pb-3">
+					<div>
+						<CardTitle>Recent Activity</CardTitle>
+						<CardDescription>Latest interest requests and updates</CardDescription>
+					</div>
+					<Button
+						variant="ghost"
+						size="sm"
+						asChild>
+						<Link to="/notifications">
+							View All
+							<ArrowRight className="size-4 ml-1" />
+						</Link>
+					</Button>
+				</CardHeader>
+				<CardContent>
+					{recentNotifications.length === 0 ?
+						<p className="text-center text-sm text-muted-foreground py-6">No new notifications</p>
+					:	<div className="space-y-2">
+							{recentNotifications.map((notification) => (
+								<Link
+									key={notification.notificationId}
+									to="/notifications"
+									className="flex items-start gap-3 rounded-lg p-3 bg-muted/40 hover:bg-muted/60 transition-colors block">
+									<div className="size-2 rounded-full bg-primary mt-2 shrink-0" />
+									<div className="flex-1 min-w-0">
+										<p className="text-sm font-medium line-clamp-1">{notification.message}</p>
+										<p className="text-xs text-muted-foreground mt-0.5">
+											{formatDistanceToNow(new Date(notification.createdAt), {
+												addSuffix: true,
+											})}
+										</p>
+									</div>
+								</Link>
+							))}
+						</div>
+					}
+				</CardContent>
+			</Card>
 		</div>
 	);
 }
+
+type AccentColor = "rose" | "emerald" | "blue" | "violet" | "amber" | "teal";
+
+const ACCENT_STYLES: Record<AccentColor, string> = {
+	rose: "bg-rose-50 text-rose-600 dark:bg-rose-950 dark:text-rose-400",
+	emerald: "bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-400",
+	blue: "bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400",
+	violet: "bg-violet-50 text-violet-600 dark:bg-violet-950 dark:text-violet-400",
+	amber: "bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400",
+	teal: "bg-teal-50 text-teal-600 dark:bg-teal-950 dark:text-teal-400",
+};
 
 function StatCard({
 	icon: Icon,
@@ -370,23 +491,25 @@ function StatCard({
 	value,
 	href,
 	isLoading,
+	accent = "blue",
 }: {
 	icon: typeof Heart;
 	label: string;
 	value: number;
 	href: string;
 	isLoading: boolean;
+	accent?: AccentColor;
 }) {
 	return (
-		<Link to={href as "/interests" | "/connections" | "/saved" | "/properties"}>
-			<Card className="transition-colors hover:bg-accent/50">
-				<CardContent className="flex items-center gap-4 p-6">
-					<div className="flex size-12 items-center justify-center rounded-lg bg-primary/10">
-						<Icon className="size-6 text-primary" />
+		<Link to={href as "/"}>
+			<Card className="transition-all hover:shadow-md hover:-translate-y-0.5 cursor-pointer">
+				<CardContent className="flex items-center gap-3 p-5">
+					<div className={`flex size-11 items-center justify-center rounded-xl ${ACCENT_STYLES[accent]}`}>
+						<Icon className="size-5" />
 					</div>
 					<div>
-						<p className="text-2xl font-bold">{isLoading ? "-" : value}</p>
-						<p className="text-sm text-muted-foreground">{label}</p>
+						<p className="text-2xl font-bold">{isLoading ? "—" : value}</p>
+						<p className="text-xs text-muted-foreground leading-tight">{label}</p>
 					</div>
 				</CardContent>
 			</Card>
@@ -411,16 +534,19 @@ function VerificationBadge({ status }: { status: string }) {
 					variant="warning"
 					className="gap-1">
 					<Clock className="size-3" />
-					Pending
+					Under Review
+				</Badge>
+			);
+		case "rejected":
+			return (
+				<Badge
+					variant="destructive"
+					className="gap-1">
+					<AlertCircle className="size-3" />
+					Rejected
 				</Badge>
 			);
 		default:
-			return (
-				<Badge
-					variant="secondary"
-					className="gap-1">
-					Unverified
-				</Badge>
-			);
+			return <Badge variant="secondary">Unverified</Badge>;
 	}
 }

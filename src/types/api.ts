@@ -196,24 +196,10 @@ export interface ListingPhoto {
 }
 
 /**
- * Matches backend GET /listings (searchListings service) response items.
- *
- * The backend spreads raw DB rows (snake_case) then adds two transformed
- * camelCase fields. Everything else stays snake_case.
- *
- * Snake_case fields (raw row spread):
- *   listing_id, listing_type, title, city, locality, room_type,
- *   preferred_gender, available_from, status, created_at, posted_by,
- *   property_id, property_name, average_rating, cover_photo_url
- *
- * CamelCase fields (added by JS transformation):
- *   rentPerMonth      — rent_per_month / 100
- *   depositAmount     — deposit_amount / 100
- *   compatibilityScore
- *   compatibilityAvailable
+ * Matches backend GET /listings (searchListings) response items.
+ * Snake_case = raw DB columns. CamelCase = JS transformations.
  */
 export interface ListingSearchItem {
-	// Snake_case — direct DB column aliases
 	listing_id: string;
 	listing_type: ListingType;
 	title: string;
@@ -229,7 +215,7 @@ export interface ListingSearchItem {
 	property_name: string | null;
 	average_rating: number;
 	cover_photo_url: string | null;
-	// CamelCase — JS-side transformations
+	// CamelCase — JS-side transformations (toRupees)
 	rentPerMonth: number;
 	depositAmount: number;
 	compatibilityScore: number;
@@ -237,7 +223,7 @@ export interface ListingSearchItem {
 }
 
 export interface ListingDetail {
-	// Core listing fields — snake_case from pg
+	// Core listing fields — snake_case from pg (spread by toRupees)
 	listing_id: string;
 	posted_by: string;
 	property_id: string | null;
@@ -263,12 +249,12 @@ export interface ListingDetail {
 	expires_at: string | null;
 	created_at: string;
 	updated_at: string;
-	// Transformed — camelCase
-	rentPerMonth: number;
-	depositAmount: number;
 	rent_includes_utilities: boolean;
 	is_negotiable: boolean;
-	// From JOIN — snake_case aliases from SELECT
+	// CamelCase (toRupees transform)
+	rentPerMonth: number;
+	depositAmount: number;
+	// From JOINs — snake_case aliases
 	poster_rating: number;
 	poster_rating_count: number;
 	poster_name: string;
@@ -277,6 +263,9 @@ export interface ListingDetail {
 	preferences: PreferencePair[];
 	photos: ListingPhoto[];
 	property: ListingPropertySummary | null;
+	// Compatibility (only present if fetched with userId)
+	compatibilityScore?: number;
+	compatibilityAvailable?: boolean;
 }
 
 /** Embedded property summary within listing detail — camelCase (JSONB_BUILD_OBJECT) */
@@ -295,13 +284,9 @@ export interface ListingPropertySummary {
 }
 
 /**
- * Matches backend GET /listings/me/saved (getSavedListings service) response items.
- *
- * Same pattern as ListingSearchItem: raw row spread (snake_case) + toRupees
- * which adds rentPerMonth/depositAmount and deletes the originals.
+ * Matches backend GET /listings/me/saved (getSavedListings) response items.
  */
 export interface SavedListingItem {
-	// Snake_case — raw DB row
 	listing_id: string;
 	listing_type: ListingType;
 	title: string;
@@ -315,7 +300,6 @@ export interface SavedListingItem {
 	property_name: string | null;
 	average_rating: number;
 	cover_photo_url: string | null;
-	// CamelCase — JS transformations
 	rentPerMonth: number;
 	depositAmount: number;
 }
@@ -412,6 +396,10 @@ export interface Notification {
 	createdAt: string;
 }
 
+export interface UnreadCountResponse {
+	count: number;
+}
+
 // ── Ratings ───────────────────────────────────────────────────────────────────
 
 export interface Rating {
@@ -474,8 +462,24 @@ export interface PgOwnerContactReveal {
 	whatsapp_phone?: string;
 }
 
-export interface UnreadCountResponse {
-	count: number;
+// ── Student full details for owner view ───────────────────────────────────────
+// Used when owner clicks on a student card to reveal full details
+
+export interface StudentFullDetails {
+	// From student profile
+	userId: string;
+	fullName: string;
+	profilePhotoUrl: string | null;
+	bio: string | null;
+	course: string | null;
+	yearOfStudy: number | null;
+	gender: Gender | null;
+	isAadhaarVerified: boolean;
+	averageRating: number;
+	ratingCount: number;
+	// From contact reveal (email only or full)
+	email: string;
+	whatsappPhone?: string;
 }
 
 // ── Listing filters (frontend search form state) ───────────────────────────────

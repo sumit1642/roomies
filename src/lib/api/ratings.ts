@@ -61,7 +61,7 @@ export async function getMyGivenRatings(cursor?: Cursor): Promise<PaginatedRespo
 	return res.data;
 }
 
-// Keep old function signature for backward compat
+// Backward compat
 export async function getPublicRatings(
 	revieweeType: RevieweeType,
 	revieweeId: string,

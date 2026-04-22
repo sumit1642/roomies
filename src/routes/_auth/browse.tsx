@@ -9,7 +9,7 @@ import { Label } from "#/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "#/components/ui/select";
 import { EmptyState } from "#/components/EmptyState";
 import { StarRating } from "#/components/StarRating";
-import { searchListings, saveListing, unsaveListing } from "#/lib/api/listings";
+import { searchListings, saveListing, unsaveListing, getSavedListings } from "#/lib/api/listings";
 import { formatCurrency } from "#/lib/format";
 import type { ListingSearchItem, ListingFilters } from "#/types";
 import { RoomType } from "#/types/enums";
@@ -18,6 +18,7 @@ import { Search, Bed, MapPin, IndianRupee, Heart, Filter, X, Building2, Users, L
 import type { Cursor } from "#/types";
 import { useAuth } from "#/context/AuthContext";
 import { cn } from "#/lib/utils";
+import { ApiClientError } from "#/lib/api";
 
 export const Route = createFileRoute("/_auth/browse")({
 	component: BrowseListingsPage,
@@ -39,8 +40,9 @@ export const Route = createFileRoute("/_auth/browse")({
 });
 
 function CompatibilityBadge({ score, available }: { score: number; available: boolean }) {
-	if (!available) return null;
-	const pct = Math.min(100, Math.round((score / 7) * 100)); // max 7 preference categories
+	if (!available || score === 0) return null;
+	// Max 7 preference categories
+	const pct = Math.min(100, Math.round((score / 7) * 100));
 	const color =
 		pct >= 70 ?
 			"text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-950 dark:border-emerald-800"
@@ -52,14 +54,14 @@ function CompatibilityBadge({ score, available }: { score: number; available: bo
 		<div
 			className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border", color)}>
 			<Zap className="size-3" />
-			{score} match
+			{score}/{7} match
 		</div>
 	);
 }
 
 function BrowseListingsPage() {
 	const searchParams = Route.useSearch();
-	const { role } = useAuth();
+	const { role, isEmailVerified } = useAuth();
 	const isStudent = role === "student";
 
 	const [listings, setListings] = useState<ListingSearchItem[]>([]);
@@ -67,8 +69,10 @@ function BrowseListingsPage() {
 	const [isLoadingMore, setIsLoadingMore] = useState(false);
 	const [nextCursor, setNextCursor] = useState<Cursor | null>(null);
 	const [showFilters, setShowFilters] = useState(false);
+	// Track saved listing IDs (loaded from backend on mount for students)
 	const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
 	const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
+	const [savedLoaded, setSavedLoaded] = useState(false);
 
 	const [filters, setFilters] = useState<ListingFilters>({
 		city: searchParams.city || "",
@@ -79,6 +83,19 @@ function BrowseListingsPage() {
 	});
 
 	const [tempFilters, setTempFilters] = useState<ListingFilters>(filters);
+
+	// Load saved listings once for students
+	useEffect(() => {
+		if (!isStudent || savedLoaded) return;
+		getSavedListings()
+			.then((res) => {
+				setSavedIds(new Set(res.items.map((l) => l.listing_id)));
+				setSavedLoaded(true);
+			})
+			.catch(() => {
+				setSavedLoaded(true);
+			});
+	}, [isStudent, savedLoaded]);
 
 	const fetchListings = useCallback(async (activeFilters: ListingFilters, cursor?: Cursor, append = false) => {
 		try {
@@ -135,6 +152,12 @@ function BrowseListingsPage() {
 		e.stopPropagation();
 		if (savingIds.has(listingId)) return;
 
+		// Require email verification to save
+		if (!isEmailVerified) {
+			toast.error("Please verify your email to save listings");
+			return;
+		}
+
 		setSavingIds((prev) => new Set(prev).add(listingId));
 		try {
 			if (savedIds.has(listingId)) {
@@ -150,8 +173,12 @@ function BrowseListingsPage() {
 				setSavedIds((prev) => new Set(prev).add(listingId));
 				toast.success("Saved to favourites");
 			}
-		} catch {
-			toast.error("Failed to update saved status");
+		} catch (err) {
+			if (err instanceof ApiClientError && err.status === 422) {
+				toast.error("This listing is no longer available");
+			} else {
+				toast.error("Failed to update saved status");
+			}
 		} finally {
 			setSavingIds((prev) => {
 				const next = new Set(prev);
@@ -334,6 +361,7 @@ function BrowseListingsPage() {
 											alt={listing.title}
 											className="w-full h-full object-cover"
 										/>
+										{/* Compatibility badge on photo */}
 										{isStudent && listing.compatibilityAvailable && (
 											<div className="absolute top-2 left-2">
 												<CompatibilityBadge
@@ -341,6 +369,28 @@ function BrowseListingsPage() {
 													available={listing.compatibilityAvailable}
 												/>
 											</div>
+										)}
+										{/* Save button on photo */}
+										{isStudent && (
+											<button
+												onClick={(e) => handleToggleSave(e, listing.listing_id)}
+												disabled={savingIds.has(listing.listing_id)}
+												className={cn(
+													"absolute top-2 right-2 size-8 flex items-center justify-center rounded-full shadow-md transition-all",
+													savedIds.has(listing.listing_id) ? "bg-rose-500 text-white" : (
+														"bg-white/90 text-slate-600 hover:bg-white"
+													),
+												)}>
+												{savingIds.has(listing.listing_id) ?
+													<Loader2 className="size-4 animate-spin" />
+												:	<Heart
+														className="size-4"
+														fill={
+															savedIds.has(listing.listing_id) ? "currentColor" : "none"
+														}
+													/>
+												}
+											</button>
 										)}
 									</div>
 								)}
@@ -362,7 +412,8 @@ function BrowseListingsPage() {
 												</CardDescription>
 											)}
 										</div>
-										{isStudent && (
+										{/* Save button for listings without photo */}
+										{isStudent && !listing.cover_photo_url && (
 											<Button
 												variant="ghost"
 												size="icon"
@@ -412,7 +463,7 @@ function BrowseListingsPage() {
 													{listing.preferred_gender}
 												</Badge>
 											)}
-										{/* Compatibility for photos-less cards */}
+										{/* Compatibility badge for listings without photo */}
 										{isStudent && listing.compatibilityAvailable && !listing.cover_photo_url && (
 											<CompatibilityBadge
 												score={listing.compatibilityScore}

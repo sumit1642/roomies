@@ -42,13 +42,31 @@ import {
 	Star,
 } from "lucide-react";
 import { cn } from "#/lib/utils";
+import { ApiClientError } from "#/lib/api";
 
 export const Route = createFileRoute("/_auth/listing/$id")({
 	component: ListingDetailPage,
 });
 
+// Compatibility meter shown only to students with set preferences
 function CompatibilityMeter({ score, available }: { score: number; available: boolean }) {
-	if (!available) return null;
+	if (!available) {
+		return (
+			<div className="p-4 rounded-xl border border-dashed border-muted-foreground/30 text-center">
+				<Zap className="size-5 text-muted-foreground mx-auto mb-1" />
+				<p className="text-xs text-muted-foreground">
+					Set your{" "}
+					<a
+						href="/preferences"
+						className="underline text-primary">
+						lifestyle preferences
+					</a>{" "}
+					to see compatibility score
+				</p>
+			</div>
+		);
+	}
+
 	const pct = Math.min(100, Math.round((score / 7) * 100));
 	const label =
 		pct >= 70 ? "Great match"
@@ -58,6 +76,10 @@ function CompatibilityMeter({ score, available }: { score: number; available: bo
 		pct >= 70 ? "text-emerald-600"
 		: pct >= 40 ? "text-amber-600"
 		: "text-slate-500";
+	const barColor =
+		pct >= 70 ? "bg-emerald-500"
+		: pct >= 40 ? "bg-amber-500"
+		: "bg-slate-400";
 
 	return (
 		<div className="p-4 rounded-xl border border-border/60 bg-muted/30 space-y-2">
@@ -70,12 +92,7 @@ function CompatibilityMeter({ score, available }: { score: number; available: bo
 			</div>
 			<div className="w-full h-2 bg-muted rounded-full overflow-hidden">
 				<div
-					className={cn(
-						"h-full rounded-full transition-all",
-						pct >= 70 ? "bg-emerald-500"
-						: pct >= 40 ? "bg-amber-500"
-						: "bg-slate-400",
-					)}
+					className={cn("h-full rounded-full transition-all", barColor)}
 					style={{ width: `${pct}%` }}
 				/>
 			</div>
@@ -87,10 +104,11 @@ function CompatibilityMeter({ score, available }: { score: number; available: bo
 function ListingDetailPage() {
 	const { id } = Route.useParams();
 	const navigate = useNavigate();
-	const { user, role } = useAuth();
+	const { user, role, isEmailVerified } = useAuth();
 	const [listing, setListing] = useState<ListingDetail | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isSaved, setIsSaved] = useState(false);
+	const [isSaving, setIsSaving] = useState(false);
 	const [interestSent, setInterestSent] = useState(false);
 	const [isSendingInterest, setIsSendingInterest] = useState(false);
 	const [interestMessage, setInterestMessage] = useState("");
@@ -105,14 +123,10 @@ function ListingDetailPage() {
 				setIsLoading(true);
 				const data = await getListing(id);
 				setListing(data);
-				// Also load property ratings if there's a property
 				if (data.property_id) {
-					try {
-						const ratings = await getPublicPropertyRatings(data.property_id);
-						setPropertyRatings(ratings.items);
-					} catch {
-						// Property ratings are non-critical
-					}
+					getPublicPropertyRatings(data.property_id)
+						.then((r) => setPropertyRatings(r.items))
+						.catch(() => {});
 				}
 			} catch {
 				toast.error("Listing not found");
@@ -126,6 +140,11 @@ function ListingDetailPage() {
 
 	const handleToggleSave = async () => {
 		if (!listing) return;
+		if (!isEmailVerified) {
+			toast.error("Please verify your email to save listings");
+			return;
+		}
+		setIsSaving(true);
 		try {
 			if (isSaved) {
 				await unsaveListing(listing.listing_id);
@@ -136,13 +155,23 @@ function ListingDetailPage() {
 				setIsSaved(true);
 				toast.success("Saved to favourites");
 			}
-		} catch {
-			toast.error("Failed to update saved status");
+		} catch (err) {
+			if (err instanceof ApiClientError && err.status === 422) {
+				toast.error("This listing is no longer available");
+			} else {
+				toast.error("Failed to update saved status");
+			}
+		} finally {
+			setIsSaving(false);
 		}
 	};
 
 	const handleExpressInterest = async () => {
 		if (!listing) return;
+		if (!isEmailVerified) {
+			toast.error("Please verify your email to send interest requests");
+			return;
+		}
 		setIsSendingInterest(true);
 		try {
 			await sendInterest(listing.listing_id, interestMessage || undefined);
@@ -151,8 +180,16 @@ function ListingDetailPage() {
 			setInterestDialogOpen(false);
 			setInterestMessage("");
 		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Failed to send interest. You may have already sent one.";
-			toast.error(msg);
+			if (err instanceof ApiClientError) {
+				if (err.status === 409) {
+					toast.error("You have already sent interest to this listing");
+					setInterestSent(true);
+				} else {
+					toast.error(err.body.message || "Failed to send interest");
+				}
+			} else {
+				toast.error("Failed to send interest");
+			}
 		} finally {
 			setIsSendingInterest(false);
 		}
@@ -241,11 +278,15 @@ function ListingDetailPage() {
 										variant="ghost"
 										size="icon"
 										onClick={handleToggleSave}
+										disabled={isSaving}
 										className={isSaved ? "text-rose-500" : ""}>
-										<Heart
-											className="h-5 w-5"
-											fill={isSaved ? "currentColor" : "none"}
-										/>
+										{isSaving ?
+											<Loader2 className="h-5 w-5 animate-spin" />
+										:	<Heart
+												className="h-5 w-5"
+												fill={isSaved ? "currentColor" : "none"}
+											/>
+										}
 									</Button>
 								)}
 							</div>
@@ -290,7 +331,7 @@ function ListingDetailPage() {
 								</Badge>
 							</div>
 
-							{/* Compatibility Score for students */}
+							{/* Compatibility Score — students only */}
 							{isStudent && (
 								<CompatibilityMeter
 									score={listing.compatibilityScore ?? 0}
@@ -472,7 +513,7 @@ function ListingDetailPage() {
 								</div>
 							</div>
 
-							{/* Interest Button */}
+							{/* Interest Button — students only */}
 							{isStudent && (
 								<>
 									{interestSent ?
@@ -500,8 +541,7 @@ function ListingDetailPage() {
 												<DialogHeader>
 													<DialogTitle>Express Interest</DialogTitle>
 													<DialogDescription>
-														Introduce yourself to the owner. Add an optional message to
-														improve your chances.
+														Introduce yourself to the owner. Add an optional message.
 													</DialogDescription>
 												</DialogHeader>
 												<div className="space-y-3">

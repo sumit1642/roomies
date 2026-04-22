@@ -27,6 +27,7 @@ import { StarRating } from "#/components/StarRating";
 import { searchListings, createListing, updateListingStatus, deleteListing } from "#/lib/api/listings";
 import { getMyProperties } from "#/lib/api/properties";
 import { getListingInterests, updateInterestStatus } from "#/lib/api/interests";
+import { getStudentProfile, revealStudentContact } from "#/lib/api/profiles";
 import { formatCurrency } from "#/lib/format";
 import { toast } from "#/components/ui/sonner";
 import {
@@ -38,7 +39,6 @@ import {
 	ToggleRight,
 	Users,
 	Loader2,
-	Eye,
 	Check,
 	X,
 	GraduationCap,
@@ -48,10 +48,22 @@ import {
 	ChevronRight,
 	Heart,
 	MessageSquare,
+	Shield,
+	User,
+	ExternalLink,
+	AlertCircle,
 } from "lucide-react";
-import type { ListingSearchItem, PropertyListItem, InterestRequestWithStudent, PreferencePair } from "#/types";
+import type {
+	ListingSearchItem,
+	PropertyListItem,
+	InterestRequestWithStudent,
+	PreferencePair,
+	StudentProfile,
+	StudentContactReveal,
+} from "#/types";
 import type { CreateListingInput } from "#/lib/api/listings";
 import { formatDistanceToNow } from "date-fns";
+import { ApiClientError } from "#/lib/api";
 
 export const Route = createFileRoute("/_auth/_pgowner/listings")({
 	component: ListingsPage,
@@ -65,6 +77,7 @@ type ListingFormData = Omit<Partial<CreateListingInput>, "amenityIds" | "prefere
 	preferences: PreferencePair[];
 };
 
+// ─── Listing Form ──────────────────────────────────────────────────────────────
 interface ListingFormProps {
 	formData: ListingFormData;
 	onChange: (data: ListingFormData) => void;
@@ -150,7 +163,10 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 					<Select
 						value={formData.preferredGender || "prefer_not_to_say"}
 						onValueChange={(value) =>
-							onChange({ ...formData, preferredGender: value as CreateListingInput["preferredGender"] })
+							onChange({
+								...formData,
+								preferredGender: value as CreateListingInput["preferredGender"],
+							})
 						}>
 						<SelectTrigger>
 							<SelectValue />
@@ -173,7 +189,10 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 						type="number"
 						value={formData.rentPerMonth ?? ""}
 						onChange={(e) =>
-							onChange({ ...formData, rentPerMonth: e.target.value ? Number(e.target.value) : undefined })
+							onChange({
+								...formData,
+								rentPerMonth: e.target.value ? Number(e.target.value) : undefined,
+							})
 						}
 						placeholder="e.g., 8000"
 						min="0"
@@ -276,7 +295,7 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 	);
 }
 
-// ─── Student Detail Modal ─────────────────────────────────────────────────────
+// ─── Student Detail Modal ──────────────────────────────────────────────────────
 function StudentDetailModal({
 	interest,
 	open,
@@ -291,6 +310,25 @@ function StudentDetailModal({
 	onDecline: (id: string) => Promise<void>;
 }) {
 	const [isActing, setIsActing] = useState<"accept" | "decline" | null>(null);
+	const [profile, setProfile] = useState<StudentProfile | null>(null);
+	const [contact, setContact] = useState<StudentContactReveal | null>(null);
+	const [isLoadingExtra, setIsLoadingExtra] = useState(false);
+
+	useEffect(() => {
+		if (!open || !interest) return;
+		setProfile(null);
+		setContact(null);
+		setIsLoadingExtra(true);
+		Promise.all([
+			getStudentProfile(interest.student.userId).catch(() => null),
+			revealStudentContact(interest.student.userId).catch(() => null),
+		])
+			.then(([p, c]) => {
+				setProfile(p);
+				setContact(c);
+			})
+			.finally(() => setIsLoadingExtra(false));
+	}, [open, interest?.student.userId]);
 
 	if (!interest) return null;
 
@@ -317,20 +355,31 @@ function StudentDetailModal({
 		}
 	};
 
+	const formatGender = (g: string | null) => {
+		if (!g) return null;
+		const map: Record<string, string> = {
+			male: "Male",
+			female: "Female",
+			other: "Other",
+			prefer_not_to_say: "Prefer not to say",
+		};
+		return map[g] || g;
+	};
+
 	return (
 		<Dialog
 			open={open}
 			onOpenChange={(o) => !o && onClose()}>
-			<DialogContent className="max-w-lg">
+			<DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
 				<DialogHeader>
 					<DialogTitle>Student Interest Request</DialogTitle>
-					<DialogDescription>Review this student's profile and respond to their request</DialogDescription>
+					<DialogDescription>Review this student's profile before responding</DialogDescription>
 				</DialogHeader>
 
 				<div className="space-y-5">
 					{/* Student Profile Header */}
 					<div className="flex items-start gap-4 p-4 bg-muted/40 rounded-xl">
-						<Avatar className="size-16 ring-2 ring-border">
+						<Avatar className="size-16 ring-2 ring-border shrink-0">
 							{student.profilePhotoUrl && (
 								<AvatarImage
 									src={student.profilePhotoUrl}
@@ -358,26 +407,100 @@ function StudentDetailModal({
 						</div>
 					</div>
 
-					{/* Student Details */}
-					<div className="space-y-3">
-						<h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-							Profile Details
-						</h4>
-						<div className="space-y-2">
-							<DetailRow
-								icon={GraduationCap}
-								label="Role"
-								value="Student"
-							/>
-							{student.averageRating > 0 && (
-								<DetailRow
-									icon={Star}
-									label="Rating"
-									value={`${student.averageRating.toFixed(1)} / 5.0`}
-								/>
-							)}
+					{/* Extra profile details (loaded async) */}
+					{isLoadingExtra ?
+						<div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
+							<Loader2 className="size-4 animate-spin" />
+							Loading profile details...
 						</div>
-					</div>
+					:	<>
+							{/* Contact Info */}
+							{contact && (
+								<div className="space-y-2">
+									<h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+										Contact
+									</h4>
+									<div className="space-y-2">
+										<div className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/50 border border-border/50">
+											<Mail className="size-4 text-muted-foreground shrink-0" />
+											<a
+												href={`mailto:${contact.email}`}
+												className="text-sm text-primary hover:underline truncate">
+												{contact.email}
+											</a>
+										</div>
+										{contact.whatsapp_phone && (
+											<div className="flex items-center gap-3 p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800">
+												<Phone className="size-4 text-emerald-600 shrink-0" />
+												<a
+													href={`https://wa.me/${contact.whatsapp_phone.replace(/\D/g, "")}`}
+													target="_blank"
+													rel="noreferrer"
+													className="text-sm text-emerald-700 dark:text-emerald-300 hover:underline flex items-center gap-1">
+													{contact.whatsapp_phone}
+													<ExternalLink className="size-3" />
+												</a>
+											</div>
+										)}
+									</div>
+								</div>
+							)}
+
+							{/* Profile Details */}
+							{profile && (
+								<div className="space-y-2">
+									<h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+										Profile Details
+									</h4>
+									<div className="grid grid-cols-2 gap-2">
+										{profile.course && (
+											<div className="flex items-start gap-2 p-2.5 rounded-lg bg-muted/50">
+												<GraduationCap className="size-3.5 text-muted-foreground mt-0.5 shrink-0" />
+												<div>
+													<p className="text-xs text-muted-foreground">Course</p>
+													<p className="text-sm font-medium truncate">{profile.course}</p>
+												</div>
+											</div>
+										)}
+										{profile.year_of_study && (
+											<div className="flex items-start gap-2 p-2.5 rounded-lg bg-muted/50">
+												<GraduationCap className="size-3.5 text-muted-foreground mt-0.5 shrink-0" />
+												<div>
+													<p className="text-xs text-muted-foreground">Year</p>
+													<p className="text-sm font-medium">Year {profile.year_of_study}</p>
+												</div>
+											</div>
+										)}
+										{profile.gender && (
+											<div className="flex items-start gap-2 p-2.5 rounded-lg bg-muted/50">
+												<User className="size-3.5 text-muted-foreground mt-0.5 shrink-0" />
+												<div>
+													<p className="text-xs text-muted-foreground">Gender</p>
+													<p className="text-sm font-medium">
+														{formatGender(profile.gender)}
+													</p>
+												</div>
+											</div>
+										)}
+										{profile.is_aadhaar_verified && (
+											<div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950">
+												<Shield className="size-3.5 text-emerald-600" />
+												<p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
+													Aadhaar Verified
+												</p>
+											</div>
+										)}
+									</div>
+									{profile.bio && (
+										<div className="p-3 bg-muted/50 rounded-lg">
+											<p className="text-xs text-muted-foreground mb-1">Bio</p>
+											<p className="text-sm line-clamp-3">{profile.bio}</p>
+										</div>
+									)}
+								</div>
+							)}
+						</>
+					}
 
 					{/* Interest Message */}
 					{interest.message && (
@@ -395,7 +518,6 @@ function StudentDetailModal({
 						</>
 					)}
 
-					{/* Request Info */}
 					<div className="text-xs text-muted-foreground">
 						Sent {formatDistanceToNow(new Date(interest.createdAt), { addSuffix: true })}
 					</div>
@@ -430,17 +552,7 @@ function StudentDetailModal({
 	);
 }
 
-function DetailRow({ icon: Icon, label, value }: { icon: typeof GraduationCap; label: string; value: string }) {
-	return (
-		<div className="flex items-center gap-3 text-sm">
-			<Icon className="size-4 text-muted-foreground shrink-0" />
-			<span className="text-muted-foreground w-20 shrink-0">{label}</span>
-			<span className="font-medium">{value}</span>
-		</div>
-	);
-}
-
-// ─── Interests Panel ──────────────────────────────────────────────────────────
+// ─── Interests Panel Dialog ────────────────────────────────────────────────────
 function InterestsPanelDialog({
 	listingId,
 	listingTitle,
@@ -479,13 +591,20 @@ function InterestsPanelDialog({
 
 	const handleAccept = async (interestId: string) => {
 		try {
-			await updateInterestStatus(interestId, "accepted");
+			const result = await updateInterestStatus(interestId, "accepted");
 			toast.success("Interest accepted! A connection has been created.");
 			setInterests((prev) => prev.filter((i) => i.interestRequestId !== interestId));
 			onDataChange();
 		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Failed to accept";
-			toast.error(msg);
+			if (err instanceof ApiClientError) {
+				if (err.status === 422) {
+					toast.error(err.body.message || "Cannot accept this interest request");
+				} else {
+					toast.error(err.body.message || "Failed to accept");
+				}
+			} else {
+				toast.error("Failed to accept interest");
+			}
 		}
 	};
 
@@ -605,7 +724,7 @@ function InterestsPanelDialog({
 	);
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Main Page ─────────────────────────────────────────────────────────────────
 function ListingsPage() {
 	const { property_id } = useSearch({ from: "/_auth/_pgowner/listings" });
 	const [listings, setListings] = useState<ListingSearchItem[]>([]);
@@ -695,8 +814,11 @@ function ListingsPage() {
 			setIsCreateOpen(false);
 			fetchData();
 		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Failed to create listing";
-			toast.error(msg);
+			if (err instanceof ApiClientError) {
+				toast.error(err.body.message || "Failed to create listing");
+			} else {
+				toast.error("Failed to create listing");
+			}
 		} finally {
 			setIsSubmitting(false);
 		}
@@ -731,8 +853,11 @@ function ListingsPage() {
 			toast.success(`Listing ${newStatus === "active" ? "activated" : "deactivated"}`);
 			fetchData();
 		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Failed to update status";
-			toast.error(msg);
+			if (err instanceof ApiClientError) {
+				toast.error(err.body.message || "Failed to update status");
+			} else {
+				toast.error("Failed to update status");
+			}
 		} finally {
 			setToggleLoading(null);
 		}
@@ -856,7 +981,7 @@ function ListingsPage() {
 										<Button
 											variant="outline"
 											size="sm"
-											className="h-8 text-xs flex-1 min-w-[100px]"
+											className="h-8 text-xs flex-1 min-w-25"
 											onClick={() =>
 												setInterestsPanelState({
 													listingId: listing.listing_id,

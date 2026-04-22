@@ -9,11 +9,11 @@ import type {
 	PreferenceMetaItem,
 	StudentContactReveal,
 	PgOwnerContactReveal,
+	StudentFullDetails,
 	Gender,
 	DocumentType,
 } from "#/types";
 
-// FIX: was /students/${userId}, backend expects /students/${userId}/profile
 export async function getStudentProfile(userId: string): Promise<StudentProfile> {
 	const res = await apiFetch<ApiSuccess<StudentProfile>>(`/students/${userId}/profile`);
 	return res.data;
@@ -28,7 +28,6 @@ export interface UpdateStudentInput {
 	dateOfBirth?: string;
 }
 
-// FIX: was PUT /students/${userId}, backend expects PUT /students/${userId}/profile
 export async function updateStudentProfile(userId: string, data: UpdateStudentInput): Promise<StudentProfile> {
 	const res = await apiFetch<ApiSuccess<StudentProfile>>(`/students/${userId}/profile`, {
 		method: "PUT",
@@ -37,8 +36,6 @@ export async function updateStudentProfile(userId: string, data: UpdateStudentIn
 	return res.data;
 }
 
-// FIX: backend returns { status: "success", data: { preferences: [...] } }
-// was returning res.data (object), now correctly returns res.data.preferences (array)
 export async function getPreferencesMeta(): Promise<PreferenceMetaItem[]> {
 	const res = await apiFetch<ApiSuccess<{ preferences: PreferenceMetaItem[] }>>("/preferences/meta");
 	return res.data.preferences;
@@ -60,7 +57,6 @@ export async function updateStudentPreferences(
 	return res.data;
 }
 
-// FIX: was /pg-owners/${userId}, backend expects /pg-owners/${userId}/profile
 export async function getPgOwnerProfile(userId: string): Promise<PgOwnerProfile> {
 	const res = await apiFetch<ApiSuccess<PgOwnerProfile>>(`/pg-owners/${userId}/profile`);
 	return res.data;
@@ -74,7 +70,6 @@ export interface UpdatePgOwnerInput {
 	operatingSince?: number;
 }
 
-// FIX: was PUT /pg-owners/${userId}, backend expects PUT /pg-owners/${userId}/profile
 export async function updatePgOwnerProfile(userId: string, data: UpdatePgOwnerInput): Promise<PgOwnerProfile> {
 	const res = await apiFetch<ApiSuccess<PgOwnerProfile>>(`/pg-owners/${userId}/profile`, {
 		method: "PUT",
@@ -95,16 +90,45 @@ export async function submitVerificationDocument(userId: string, data: SubmitDoc
 	});
 }
 
-// GET - correct
+// Student contact reveal — GET request
+// Returns email only for guests/unverified; email + whatsapp for verified users
 export async function revealStudentContact(userId: string): Promise<StudentContactReveal> {
 	const res = await apiFetch<ApiSuccess<StudentContactReveal>>(`/students/${userId}/contact/reveal`);
 	return res.data;
 }
 
-// FIX: must be POST not GET per backend route definition
+// PG Owner contact reveal — POST request (consumes quota slot)
 export async function revealPgOwnerContact(userId: string): Promise<PgOwnerContactReveal> {
 	const res = await apiFetch<ApiSuccess<PgOwnerContactReveal>>(`/pg-owners/${userId}/contact/reveal`, {
 		method: "POST",
 	});
 	return res.data;
+}
+
+/**
+ * Get full student details for owner view.
+ * Combines profile + contact reveal into a single convenient call.
+ * Returns null if either call fails.
+ */
+export async function getStudentFullDetails(userId: string): Promise<StudentFullDetails | null> {
+	try {
+		const [profile, contact] = await Promise.all([getStudentProfile(userId), revealStudentContact(userId)]);
+
+		return {
+			userId: profile.user_id,
+			fullName: profile.full_name,
+			profilePhotoUrl: profile.profile_photo_url,
+			bio: profile.bio,
+			course: profile.course,
+			yearOfStudy: profile.year_of_study,
+			gender: profile.gender,
+			isAadhaarVerified: profile.is_aadhaar_verified,
+			averageRating: profile.average_rating,
+			ratingCount: profile.rating_count,
+			email: contact.email,
+			whatsappPhone: contact.whatsapp_phone,
+		};
+	} catch {
+		return null;
+	}
 }

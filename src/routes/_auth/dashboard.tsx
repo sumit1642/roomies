@@ -155,7 +155,6 @@ function StudentDashboard({ userId, isEmailVerified }: { userId: string; isEmail
 					<Button
 						size="lg"
 						asChild>
-						{/* FIX: /browse has validateSearch so search prop is required */}
 						<Link
 							to="/browse"
 							search={{}}>

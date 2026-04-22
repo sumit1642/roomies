@@ -114,7 +114,6 @@ function ListingDetailPage() {
 
 	if (!listing) return null;
 
-	// Backend embeds property as camelCase object (from fetchListingDetail)
 	const property = listing.property;
 
 	return (
@@ -152,7 +151,6 @@ function ListingDetailPage() {
 							<div className="flex items-start justify-between">
 								<div className="flex-1 min-w-0">
 									<h1 className="text-2xl font-bold">{listing.title}</h1>
-									{/* Property name — backend returns property.propertyName */}
 									{property && (
 										<p className="flex items-center gap-1 text-muted-foreground mt-1">
 											<Building2 className="h-4 w-4 shrink-0" />
@@ -280,7 +278,6 @@ function ListingDetailPage() {
 						</Card>
 					)}
 
-					{/* Property info */}
 					{property && (
 						<Card>
 							<CardHeader>

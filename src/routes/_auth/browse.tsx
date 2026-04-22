@@ -19,12 +19,20 @@ import type { Cursor } from "#/types";
 
 export const Route = createFileRoute("/_auth/browse")({
 	component: BrowseListingsPage,
-	validateSearch: (search: Record<string, unknown>) => ({
-		city: search.city as string | undefined,
-		room_type: search.room_type as string | undefined,
-		min_rent: search.min_rent as number | undefined,
-		max_rent: search.max_rent as number | undefined,
-		gender: search.gender as string | undefined,
+	validateSearch: (
+		search: Record<string, unknown>,
+	): {
+		city?: string;
+		room_type?: string;
+		min_rent?: number;
+		max_rent?: number;
+		gender?: string;
+	} => ({
+		city: typeof search.city === "string" ? search.city : undefined,
+		room_type: typeof search.room_type === "string" ? search.room_type : undefined,
+		min_rent: typeof search.min_rent === "number" ? search.min_rent : undefined,
+		max_rent: typeof search.max_rent === "number" ? search.max_rent : undefined,
+		gender: typeof search.gender === "string" ? search.gender : undefined,
 	}),
 });
 

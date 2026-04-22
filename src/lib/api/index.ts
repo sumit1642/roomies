@@ -6,3 +6,4 @@ export * from "./notifications";
 export * from "./properties";
 export * from "./profiles";
 export * from "./ratings";
+export * from "./amenities";

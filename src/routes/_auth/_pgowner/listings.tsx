@@ -17,15 +17,18 @@ import { Input } from "#/components/ui/input";
 import { Label } from "#/components/ui/label";
 import { Textarea } from "#/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "#/components/ui/select";
+import { Separator } from "#/components/ui/separator";
 import { EmptyState } from "#/components/EmptyState";
 import { ConfirmDialog } from "#/components/ConfirmDialog";
+import { AmenityPicker } from "#/components/AmenityPicker";
+import { PreferencePicker } from "#/components/PreferencePicker";
 import { searchListings, createListing, updateListingStatus, deleteListing } from "#/lib/api/listings";
 import { getMyProperties } from "#/lib/api/properties";
 import { getListingInterests, updateInterestStatus } from "#/lib/api/interests";
 import { formatCurrency } from "#/lib/format";
 import { toast } from "#/components/ui/sonner";
 import { Plus, Bed, IndianRupee, Trash2, ToggleLeft, ToggleRight, Users, Loader2, Eye } from "lucide-react";
-import type { ListingSearchItem, PropertyListItem, InterestRequestWithStudent } from "#/types";
+import type { ListingSearchItem, PropertyListItem, InterestRequestWithStudent, PreferencePair } from "#/types";
 import type { CreateListingInput } from "#/lib/api/listings";
 
 export const Route = createFileRoute("/_auth/_pgowner/listings")({
@@ -35,10 +38,16 @@ export const Route = createFileRoute("/_auth/_pgowner/listings")({
 	}),
 });
 
-// ─── ListingForm defined OUTSIDE parent component ─────────────────────────────
+// ─── Form data type ───────────────────────────────────────────────────────────
+type ListingFormData = Omit<Partial<CreateListingInput>, "amenityIds" | "preferences"> & {
+	amenityIds: string[];
+	preferences: PreferencePair[];
+};
+
+// ─── ListingForm defined OUTSIDE parent to avoid remount on render ─────────────
 interface ListingFormProps {
-	formData: Partial<CreateListingInput>;
-	onChange: (data: Partial<CreateListingInput>) => void;
+	formData: ListingFormData;
+	onChange: (data: ListingFormData) => void;
 	onSubmit: (e: React.FormEvent) => void;
 	isSubmitting: boolean;
 	properties: PropertyListItem[];
@@ -48,7 +57,8 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 	return (
 		<form
 			onSubmit={onSubmit}
-			className="space-y-4">
+			className="space-y-5">
+			{/* Property selection */}
 			<div className="space-y-2">
 				<Label>Property *</Label>
 				<Select
@@ -69,6 +79,7 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 				</Select>
 			</div>
 
+			{/* Listing type */}
 			<div className="space-y-2">
 				<Label>Listing Type *</Label>
 				<Select
@@ -86,6 +97,7 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 				</Select>
 			</div>
 
+			{/* Title */}
 			<div className="space-y-2">
 				<Label htmlFor="listing-title">Title *</Label>
 				<Input
@@ -97,6 +109,7 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 				/>
 			</div>
 
+			{/* Room type + gender */}
 			<div className="grid grid-cols-2 gap-4">
 				<div className="space-y-2">
 					<Label>Room Type *</Label>
@@ -116,16 +129,12 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 						</SelectContent>
 					</Select>
 				</div>
-
 				<div className="space-y-2">
 					<Label>Gender Preference</Label>
 					<Select
 						value={formData.preferredGender || "prefer_not_to_say"}
 						onValueChange={(value) =>
-							onChange({
-								...formData,
-								preferredGender: value as CreateListingInput["preferredGender"],
-							})
+							onChange({ ...formData, preferredGender: value as CreateListingInput["preferredGender"] })
 						}>
 						<SelectTrigger>
 							<SelectValue />
@@ -134,11 +143,13 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 							<SelectItem value="prefer_not_to_say">Any</SelectItem>
 							<SelectItem value="male">Male</SelectItem>
 							<SelectItem value="female">Female</SelectItem>
+							<SelectItem value="other">Other</SelectItem>
 						</SelectContent>
 					</Select>
 				</div>
 			</div>
 
+			{/* Rent + Deposit */}
 			<div className="grid grid-cols-2 gap-4">
 				<div className="space-y-2">
 					<Label htmlFor="listing-rent">Monthly Rent (₹) *</Label>
@@ -154,7 +165,6 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 						required
 					/>
 				</div>
-
 				<div className="space-y-2">
 					<Label htmlFor="listing-deposit">Deposit (₹)</Label>
 					<Input
@@ -173,9 +183,10 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 				</div>
 			</div>
 
+			{/* Capacity + Available from */}
 			<div className="grid grid-cols-2 gap-4">
 				<div className="space-y-2">
-					<Label htmlFor="listing-capacity">Capacity</Label>
+					<Label htmlFor="listing-capacity">Capacity *</Label>
 					<Input
 						id="listing-capacity"
 						type="number"
@@ -185,7 +196,6 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 						max="20"
 					/>
 				</div>
-
 				<div className="space-y-2">
 					<Label htmlFor="listing-available">Available From *</Label>
 					<Input
@@ -198,6 +208,7 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 				</div>
 			</div>
 
+			{/* Description */}
 			<div className="space-y-2">
 				<Label htmlFor="listing-description">Description</Label>
 				<Textarea
@@ -206,6 +217,33 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 					onChange={(e) => onChange({ ...formData, description: e.target.value })}
 					placeholder="Describe the room features, rules, etc."
 					rows={3}
+				/>
+			</div>
+
+			<Separator />
+
+			{/* Amenities */}
+			<div className="space-y-2">
+				<Label>Amenities</Label>
+				<p className="text-xs text-muted-foreground">Select all amenities available in this room</p>
+				<AmenityPicker
+					selectedIds={formData.amenityIds}
+					onChange={(ids) => onChange({ ...formData, amenityIds: ids })}
+					disabled={isSubmitting}
+				/>
+			</div>
+
+			<Separator />
+
+			{/* Preferences */}
+			<div className="space-y-2">
+				<Label>Tenant Preferences</Label>
+				<p className="text-xs text-muted-foreground">Set lifestyle preferences for ideal tenants (optional)</p>
+				<PreferencePicker
+					value={formData.preferences}
+					onChange={(prefs) => onChange({ ...formData, preferences: prefs })}
+					disabled={isSubmitting}
+					allowClear
 				/>
 			</div>
 
@@ -237,8 +275,9 @@ function ListingsPage() {
 	const [interestsLoading, setInterestsLoading] = useState(false);
 	const [deleteTarget, setDeleteTarget] = useState<ListingSearchItem | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
+	const [toggleLoading, setToggleLoading] = useState<string | null>(null);
 
-	const getDefaultFormData = (propId?: string): Partial<CreateListingInput> => ({
+	const getDefaultFormData = (propId?: string): ListingFormData => ({
 		propertyId: propId || "",
 		listingType: "pg_room",
 		title: "",
@@ -254,7 +293,7 @@ function ListingsPage() {
 		preferences: [],
 	});
 
-	const [formData, setFormData] = useState<Partial<CreateListingInput>>(getDefaultFormData(property_id));
+	const [formData, setFormData] = useState<ListingFormData>(getDefaultFormData(property_id));
 
 	useEffect(() => {
 		fetchData();
@@ -294,15 +333,27 @@ function ListingsPage() {
 			toast.error("Please fill in all required fields");
 			return;
 		}
+		if (!formData.rentPerMonth && formData.rentPerMonth !== 0) {
+			toast.error("Monthly rent is required");
+			return;
+		}
 
 		setIsSubmitting(true);
 		try {
-			await createListing(formData as CreateListingInput);
+			await createListing({
+				...(formData as CreateListingInput),
+				depositAmount: formData.depositAmount ?? 0,
+				rentIncludesUtilities: formData.rentIncludesUtilities ?? false,
+				isNegotiable: formData.isNegotiable ?? false,
+				amenityIds: formData.amenityIds,
+				preferences: formData.preferences,
+			});
 			toast.success("Listing created successfully");
 			setIsCreateOpen(false);
 			fetchData();
-		} catch {
-			toast.error("Failed to create listing");
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : "Failed to create listing";
+			toast.error(msg);
 		} finally {
 			setIsSubmitting(false);
 		}
@@ -311,7 +362,6 @@ function ListingsPage() {
 	const handleDelete = async () => {
 		if (!deleteTarget) return;
 		try {
-			// listing_id is snake_case from backend
 			await deleteListing(deleteTarget.listing_id);
 			toast.success("Listing deleted");
 			setDeleteTarget(null);
@@ -322,14 +372,28 @@ function ListingsPage() {
 	};
 
 	const handleToggleStatus = async (listing: ListingSearchItem) => {
-		const newStatus = listing.status === "active" ? "deactivated" : "active";
+		// Determine the new status. 'filled' listings can only be deactivated,
+		// 'deactivated' can become 'active', 'active' becomes 'deactivated'.
+		const newStatus =
+			listing.status === "active" ? "deactivated"
+			: listing.status === "deactivated" ? "active"
+			: null;
+
+		if (!newStatus) {
+			toast.error(`Cannot toggle a listing with status "${listing.status}"`);
+			return;
+		}
+
+		setToggleLoading(listing.listing_id);
 		try {
-			// listing_id is snake_case from backend
-			await updateListingStatus(listing.listing_id, newStatus as "active" | "deactivated");
+			await updateListingStatus(listing.listing_id, newStatus as "active" | "deactivated" | "filled");
 			toast.success(`Listing ${newStatus === "active" ? "activated" : "deactivated"}`);
 			fetchData();
-		} catch {
-			toast.error("Failed to update status");
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : "Failed to update status";
+			toast.error(msg);
+		} finally {
+			setToggleLoading(null);
 		}
 	};
 
@@ -351,8 +415,10 @@ function ListingsPage() {
 			await updateInterestStatus(interestId, "accepted");
 			toast.success("Interest accepted! A connection has been created.");
 			setInterests((prev) => prev.filter((i) => i.interestRequestId !== interestId));
-		} catch {
-			toast.error("Failed to accept interest");
+			fetchData(); // refresh listing occupancy counts
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : "Failed to accept interest";
+			toast.error(msg);
 		}
 	};
 
@@ -430,11 +496,19 @@ function ListingsPage() {
 										<div className="flex items-start justify-between gap-3">
 											<div>
 												<p className="font-medium">{interest.student.fullName}</p>
+												{interest.student.averageRating > 0 && (
+													<p className="text-xs text-muted-foreground">
+														Rating: {interest.student.averageRating.toFixed(1)}
+													</p>
+												)}
 												{interest.message && (
 													<p className="text-sm text-muted-foreground mt-1 line-clamp-2">
 														&ldquo;{interest.message}&rdquo;
 													</p>
 												)}
+												<p className="text-xs text-muted-foreground mt-1">
+													{new Date(interest.createdAt).toLocaleDateString()}
+												</p>
 											</div>
 											<div className="flex gap-2 shrink-0">
 												<Button
@@ -474,73 +548,89 @@ function ListingsPage() {
 					}
 				/>
 			:	<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-					{listings.map((listing) => (
-						// listing_id is snake_case from backend
-						<Card
-							key={listing.listing_id}
-							className="overflow-hidden">
-							<CardHeader className="pb-3">
-								<div className="flex items-start justify-between">
-									<CardTitle className="text-base line-clamp-1">{listing.title}</CardTitle>
-									<Badge variant={listing.status === "active" ? "success" : "secondary"}>
-										{listing.status}
-									</Badge>
-								</div>
-								<CardDescription>
-									{listing.city}
-									{listing.locality && `, ${listing.locality}`}
-								</CardDescription>
-							</CardHeader>
-							<CardContent className="space-y-3">
-								<div className="flex flex-wrap gap-2">
-									{/* room_type is snake_case */}
-									<Badge variant="outline">
-										<Bed className="mr-1 h-3 w-3" />
-										{listing.room_type.replace(/_/g, " ")}
-									</Badge>
-									{/* preferred_gender is snake_case */}
-									{listing.preferred_gender && listing.preferred_gender !== "prefer_not_to_say" && (
-										<Badge variant="outline">
-											<Users className="mr-1 h-3 w-3" />
-											{listing.preferred_gender}
+					{listings.map((listing) => {
+						const canToggle = listing.status === "active" || listing.status === "deactivated";
+						return (
+							<Card
+								key={listing.listing_id}
+								className="overflow-hidden">
+								<CardHeader className="pb-3">
+									<div className="flex items-start justify-between">
+										<CardTitle className="text-base line-clamp-1">{listing.title}</CardTitle>
+										<Badge
+											variant={
+												listing.status === "active" ? "success"
+												: listing.status === "filled" ?
+													"info"
+												:	"secondary"
+											}>
+											{listing.status}
 										</Badge>
-									)}
-								</div>
+									</div>
+									<CardDescription>
+										{listing.city}
+										{listing.locality && `, ${listing.locality}`}
+									</CardDescription>
+								</CardHeader>
+								<CardContent className="space-y-3">
+									<div className="flex flex-wrap gap-2">
+										<Badge variant="outline">
+											<Bed className="mr-1 h-3 w-3" />
+											{listing.room_type.replace(/_/g, " ")}
+										</Badge>
+										{listing.preferred_gender &&
+											listing.preferred_gender !== "prefer_not_to_say" && (
+												<Badge variant="outline">
+													<Users className="mr-1 h-3 w-3" />
+													{listing.preferred_gender}
+												</Badge>
+											)}
+									</div>
 
-								<div className="flex items-center text-primary font-semibold">
-									<IndianRupee className="h-4 w-4" />
-									{/* rentPerMonth is camelCase (toRupees transformation) */}
-									{formatCurrency(listing.rentPerMonth)}/mo
-								</div>
+									<div className="flex items-center text-primary font-semibold">
+										<IndianRupee className="h-4 w-4" />
+										{formatCurrency(listing.rentPerMonth)}/mo
+									</div>
 
-								<div className="flex items-center gap-2 pt-2 border-t">
-									<Button
-										variant="ghost"
-										size="sm"
-										onClick={() => handleViewInterests(listing.listing_id)}
-										className="flex-1">
-										<Eye className="mr-1 h-4 w-4" />
-										Interests
-									</Button>
-									<Button
-										variant="ghost"
-										size="sm"
-										onClick={() => handleToggleStatus(listing)}>
-										{listing.status === "active" ?
-											<ToggleRight className="h-4 w-4" />
-										:	<ToggleLeft className="h-4 w-4" />}
-									</Button>
-									<Button
-										variant="ghost"
-										size="sm"
-										onClick={() => setDeleteTarget(listing)}
-										className="text-destructive hover:text-destructive">
-										<Trash2 className="h-4 w-4" />
-									</Button>
-								</div>
-							</CardContent>
-						</Card>
-					))}
+									<div className="flex items-center gap-2 pt-2 border-t">
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => handleViewInterests(listing.listing_id)}
+											className="flex-1">
+											<Eye className="mr-1 h-4 w-4" />
+											Interests
+										</Button>
+										{canToggle && (
+											<Button
+												variant="ghost"
+												size="sm"
+												onClick={() => handleToggleStatus(listing)}
+												disabled={toggleLoading === listing.listing_id}
+												title={
+													listing.status === "active" ?
+														"Deactivate listing"
+													:	"Activate listing"
+												}>
+												{toggleLoading === listing.listing_id ?
+													<Loader2 className="h-4 w-4 animate-spin" />
+												: listing.status === "active" ?
+													<ToggleRight className="h-4 w-4 text-green-600" />
+												:	<ToggleLeft className="h-4 w-4" />}
+											</Button>
+										)}
+										<Button
+											variant="ghost"
+											size="sm"
+											onClick={() => setDeleteTarget(listing)}
+											className="text-destructive hover:text-destructive">
+											<Trash2 className="h-4 w-4" />
+										</Button>
+									</div>
+								</CardContent>
+							</Card>
+						);
+					})}
 				</div>
 			}
 

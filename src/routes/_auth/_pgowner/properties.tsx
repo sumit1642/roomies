@@ -17,8 +17,10 @@ import { Input } from "#/components/ui/input";
 import { Label } from "#/components/ui/label";
 import { Textarea } from "#/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "#/components/ui/select";
+import { Separator } from "#/components/ui/separator";
 import { EmptyState } from "#/components/EmptyState";
 import { ConfirmDialog } from "#/components/ConfirmDialog";
+import { AmenityPicker } from "#/components/AmenityPicker";
 import { createProperty, updateProperty, deleteProperty, getMyProperties } from "#/lib/api/properties";
 import { toast } from "#/components/ui/sonner";
 import { Plus, Building2, MapPin, Edit, Trash2, Eye, Loader2 } from "lucide-react";
@@ -28,7 +30,6 @@ export const Route = createFileRoute("/_auth/_pgowner/properties")({
 	component: PropertiesPage,
 });
 
-// ─── Form data type ───────────────────────────────────────────────────────────
 interface PropertyFormData {
 	propertyName: string;
 	addressLine: string;
@@ -38,12 +39,10 @@ interface PropertyFormData {
 	description: string;
 	propertyType: "pg" | "hostel" | "shared_apartment";
 	houseRules: string;
+	amenityIds: string[];
 }
 
-// ─── PropertyForm defined OUTSIDE parent component ────────────────────────────
-// IMPORTANT: Defining a component inside another component causes React to treat
-// it as a new component type on every render, unmounting/remounting it and losing
-// focus after each keystroke. Define it at module level and pass props instead.
+// Defined OUTSIDE parent to avoid remount-on-rerender focus loss
 interface PropertyFormProps {
 	formData: PropertyFormData;
 	onChange: (data: PropertyFormData) => void;
@@ -73,7 +72,7 @@ function PropertyForm({ formData, onChange, onSubmit, isSubmitting, isEditing }:
 				<Select
 					value={formData.propertyType}
 					onValueChange={(value) =>
-						onChange({ ...formData, propertyType: value as "pg" | "hostel" | "shared_apartment" })
+						onChange({ ...formData, propertyType: value as PropertyFormData["propertyType"] })
 					}>
 					<SelectTrigger>
 						<SelectValue />
@@ -152,6 +151,19 @@ function PropertyForm({ formData, onChange, onSubmit, isSubmitting, isEditing }:
 				/>
 			</div>
 
+			<Separator />
+
+			{/* Amenities */}
+			<div className="space-y-2">
+				<Label>Property Amenities</Label>
+				<p className="text-xs text-muted-foreground">Select amenities available across all rooms</p>
+				<AmenityPicker
+					selectedIds={formData.amenityIds}
+					onChange={(ids) => onChange({ ...formData, amenityIds: ids })}
+					disabled={isSubmitting}
+				/>
+			</div>
+
 			<DialogFooter>
 				<Button
 					type="submit"
@@ -170,7 +182,6 @@ function PropertyForm({ formData, onChange, onSubmit, isSubmitting, isEditing }:
 	);
 }
 
-// ─── Page component ───────────────────────────────────────────────────────────
 function PropertiesPage() {
 	const [properties, setProperties] = useState<PropertyListItem[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
@@ -188,6 +199,7 @@ function PropertiesPage() {
 		description: "",
 		propertyType: "pg",
 		houseRules: "",
+		amenityIds: [],
 	};
 
 	const [formData, setFormData] = useState<PropertyFormData>(defaultFormData);
@@ -208,12 +220,8 @@ function PropertiesPage() {
 		}
 	};
 
-	const resetForm = () => {
-		setFormData(defaultFormData);
-	};
-
 	const handleOpenCreate = () => {
-		resetForm();
+		setFormData(defaultFormData);
 		setIsCreateOpen(true);
 	};
 
@@ -227,6 +235,7 @@ function PropertiesPage() {
 			description: property.description || "",
 			propertyType: property.property_type || "pg",
 			houseRules: property.house_rules || "",
+			amenityIds: [], // amenities not returned in list view; user reselects on edit
 		});
 		setEditingProperty(property);
 	};
@@ -250,6 +259,7 @@ function PropertiesPage() {
 					description: formData.description || undefined,
 					propertyType: formData.propertyType,
 					houseRules: formData.houseRules || undefined,
+					amenityIds: formData.amenityIds,
 				});
 				toast.success("Property updated successfully");
 				setEditingProperty(null);
@@ -263,14 +273,15 @@ function PropertiesPage() {
 					description: formData.description || undefined,
 					propertyType: formData.propertyType,
 					houseRules: formData.houseRules || undefined,
-					amenityIds: [],
+					amenityIds: formData.amenityIds,
 				});
 				toast.success("Property created successfully");
 				setIsCreateOpen(false);
 			}
 			fetchProperties();
-		} catch {
-			toast.error("Failed to save property");
+		} catch (err: unknown) {
+			const msg = err instanceof Error ? err.message : "Failed to save property";
+			toast.error(msg);
 		} finally {
 			setIsSubmitting(false);
 		}
@@ -358,9 +369,14 @@ function PropertiesPage() {
 							</CardHeader>
 							<CardContent className="space-y-3">
 								<div className="flex gap-3 text-sm text-muted-foreground">
-									<span>{property.active_listing_count} active listings</span>
+									<span>
+										{property.active_listing_count} active listing
+										{property.active_listing_count !== 1 ? "s" : ""}
+									</span>
 									<span>&bull;</span>
-									<span>{property.amenity_count} amenities</span>
+									<span>
+										{property.amenity_count} amenit{property.amenity_count !== 1 ? "ies" : "y"}
+									</span>
 								</div>
 
 								{property.description && (
@@ -380,6 +396,8 @@ function PropertiesPage() {
 											Listings
 										</Button>
 									</Link>
+
+									{/* Edit dialog */}
 									<Dialog
 										open={editingProperty?.property_id === property.property_id}
 										onOpenChange={(open) => !open && setEditingProperty(null)}>
@@ -405,6 +423,7 @@ function PropertiesPage() {
 											/>
 										</DialogContent>
 									</Dialog>
+
 									<Button
 										variant="ghost"
 										size="sm"

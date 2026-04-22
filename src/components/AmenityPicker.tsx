@@ -4,6 +4,7 @@ import { getAmenities } from "#/lib/api/amenities";
 import type { Amenity } from "#/types";
 import { Checkbox } from "#/components/ui/checkbox";
 import { Label } from "#/components/ui/label";
+import { toast } from "#/components/ui/sonner";
 
 interface AmenityPickerProps {
 	selectedIds: string[];
@@ -20,11 +21,21 @@ const CATEGORY_LABELS: Record<string, string> = {
 export function AmenityPicker({ selectedIds, onChange, disabled = false }: AmenityPickerProps) {
 	const [amenities, setAmenities] = useState<Amenity[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
+	const [amenitiesError, setAmenitiesError] = useState<unknown>(null);
 
 	useEffect(() => {
 		getAmenities()
-			.then(setAmenities)
-			.catch(() => {})
+			.then((data) => {
+				setAmenities(data);
+				setAmenitiesError(null);
+			})
+			.catch((err) => {
+				console.error("[AmenityPicker] Failed to load amenities", err);
+				setAmenitiesError(err);
+				toast.error("Failed to load amenities", {
+					description: "Please refresh and try again.",
+				});
+			})
 			.finally(() => setIsLoading(false));
 	}, []);
 
@@ -47,6 +58,15 @@ export function AmenityPicker({ selectedIds, onChange, disabled = false }: Ameni
 				))}
 			</div>
 		);
+	}
+
+	if (amenitiesError) {
+		const errorMessage =
+			amenitiesError instanceof Error && amenitiesError.message ?
+				amenitiesError.message
+			:	"Unable to load amenities.";
+
+		return <p className="text-sm text-destructive">{errorMessage}</p>;
 	}
 
 	if (!amenities.length) {

@@ -1,3 +1,4 @@
+// src/lib/api.ts
 import type { ApiError } from "#/types";
 
 const BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api/v1";
@@ -14,37 +15,31 @@ export class ApiClientError extends Error {
 
 // ─── Token storage ────────────────────────────────────────────────────────────
 //
-// In development (same-origin localhost), we rely on HttpOnly cookies set by
-// the backend — credentials: "include" + sameSite: "strict" works fine because
-// both frontend and backend share the same host (localhost).
+// Production auth strategy (cross-domain: Vercel frontend + Render backend):
 //
-// In production, the frontend (roomies-lilac.vercel.app) and backend
-// (roomies-api.onrender.com) are on DIFFERENT domains. Browsers enforce:
-//   1. sameSite: "strict" cookies are NEVER sent cross-site → auth breaks
-//   2. Even sameSite: "lax" won't work for POST/PUT/DELETE cross-site requests
-//   3. credentials: "include" requires the server to echo the exact Origin in
-//      Access-Control-Allow-Origin (not *) — and Render sets it correctly
-//      but the cookies still don't cross domain boundaries reliably
+// Problem: Browsers block cross-domain cookies with sameSite restrictions.
+//   sameSite:"strict" → NEVER sent cross-site (our old default, completely broken)
+//   sameSite:"lax"    → only sent on top-level GET navigations (still broken for API calls)
+//   sameSite:"none"   → works cross-site BUT requires secure:true AND the browser
+//                       still blocks them in many scenarios (Render free tier, etc.)
 //
-// The fix: in production, use the X-Client-Transport: bearer header to signal
-// the backend to return tokens in the JSON response body (not cookies), then
-// store them in memory (not localStorage — XSS risk) and send them as
-// Authorization: Bearer headers on every request.
+// Solution: X-Client-Transport: bearer header approach
+//   1. Frontend sends "X-Client-Transport: bearer" header on every request
+//   2. Backend detects this and returns { accessToken, refreshToken } IN THE JSON BODY
+//      (in addition to setting cookies as a fallback)
+//   3. Frontend stores tokens in sessionStorage (survives page refresh, not XSS-accessible
+//      from other origins, cleared when tab closes)
+//   4. Every subsequent request uses Authorization: Bearer <accessToken>
+//   5. When 401 received, try silent refresh with the stored refreshToken
 //
-// The backend already supports this pattern — see auth.controller.js:
-//   const isBearerTransport = (req) =>
-//     req.headers["x-client-transport"] === "bearer";
-// When this header is present, the backend includes accessToken + refreshToken
-// in the response body AND still sets the cookies (belt + suspenders).
+// Development (localhost, same-origin): cookies work fine, skip all this.
 
 const IS_PROD = import.meta.env.PROD;
 
-// In-memory token store (lost on page refresh — handled by hydration below)
+// In-memory cache (fastest path — avoids sessionStorage reads on every request)
 let _accessToken: string | null = null;
 let _refreshToken: string | null = null;
 
-// Session storage keys (survives page refresh within the same tab, not XSS-
-// accessible from other origins, cleared when the tab closes)
 const ACCESS_KEY = "roomies_at";
 const REFRESH_KEY = "roomies_rt";
 
@@ -105,10 +100,11 @@ export const tokenStore = {
 };
 
 // ─── Silent refresh ────────────────────────────────────────────────────────────
+// Deduplicate concurrent refresh attempts — if two requests 401 simultaneously,
+// only one refresh call is made and both requests wait for it.
 let _refreshPromise: Promise<boolean> | null = null;
 
 async function silentRefresh(): Promise<boolean> {
-	// Deduplicate concurrent refresh attempts
 	if (_refreshPromise) return _refreshPromise;
 
 	_refreshPromise = (async () => {
@@ -120,11 +116,11 @@ async function silentRefresh(): Promise<boolean> {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
+					// Signal backend to return tokens in body
 					"X-Client-Transport": "bearer",
 				},
-				// In prod: send token in body. In dev: rely on cookie.
-				body: IS_PROD ? JSON.stringify({ refreshToken: rt }) : undefined,
-				credentials: IS_PROD ? "omit" : "include",
+				body: JSON.stringify({ refreshToken: rt }),
+				credentials: "omit", // No cookies in prod cross-domain
 			});
 
 			if (!res.ok) {
@@ -133,11 +129,12 @@ async function silentRefresh(): Promise<boolean> {
 			}
 
 			const json = await res.json();
-			const data = json?.data;
+			const data = json?.data as { accessToken?: string; refreshToken?: string } | undefined;
 			if (data?.accessToken && data?.refreshToken) {
 				tokenStore.setTokens(data.accessToken, data.refreshToken);
 				return true;
 			}
+			tokenStore.clearTokens();
 			return false;
 		} catch {
 			return false;
@@ -157,7 +154,7 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
 	};
 
 	if (IS_PROD) {
-		// Tell backend to return tokens in body, not just cookies
+		// Tell backend to return tokens in JSON body (bearer transport mode)
 		headers["X-Client-Transport"] = "bearer";
 
 		const at = tokenStore.getAccessToken();
@@ -169,13 +166,14 @@ export async function apiFetch<T>(path: string, options?: RequestInit): Promise<
 	const fetchOptions: RequestInit = {
 		...options,
 		headers,
-		// In dev: send cookies for same-origin localhost. In prod: omit — we use Bearer.
+		// Dev: include cookies (same-origin localhost works fine)
+		// Prod: omit — we use Authorization header instead of cross-domain cookies
 		credentials: IS_PROD ? "omit" : "include",
 	};
 
 	let res = await fetch(`${BASE}${path}`, fetchOptions);
 
-	// If 401 in prod, try a silent token refresh then retry once
+	// On 401 in production, try silent token refresh then retry once
 	if (res.status === 401 && IS_PROD) {
 		const refreshed = await silentRefresh();
 		if (refreshed) {

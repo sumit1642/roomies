@@ -1,3 +1,4 @@
+// src/lib/api/properties.ts
 import { apiFetch } from "../api";
 import type {
 	ApiSuccess,
@@ -8,6 +9,7 @@ import type {
 	Cursor,
 	PropertyType,
 	LegacyApiResponse,
+	LegacyProperty,
 } from "#/types";
 
 export async function getMyProperties(cursor?: Cursor): Promise<PaginatedResponse<PropertyListItem>> {
@@ -63,17 +65,6 @@ export async function updateProperty(propertyId: string, data: Partial<CreatePro
 export async function deleteProperty(propertyId: string): Promise<void> {
 	await apiFetch<ApiMessage>(`/properties/${propertyId}`, { method: "DELETE" });
 }
-
-type LegacyProperty = {
-	id: string;
-	name: string;
-	address: string;
-	city: string;
-	state: string;
-	pincode: string;
-	description: string | null;
-	is_verified: boolean;
-};
 
 function toLegacyProperty(p: PropertyListItem | Property): LegacyProperty {
 	return {

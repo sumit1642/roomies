@@ -1,6 +1,6 @@
 // src/routes/_auth/browse.tsx
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "#/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "#/components/ui/card";
 import { Badge } from "#/components/ui/badge";
@@ -19,12 +19,20 @@ import type { Cursor } from "#/types";
 
 export const Route = createFileRoute("/_auth/browse")({
 	component: BrowseListingsPage,
-	validateSearch: (search: Record<string, unknown>) => ({
-		city: search.city as string | undefined,
-		room_type: search.room_type as string | undefined,
-		min_rent: search.min_rent as number | undefined,
-		max_rent: search.max_rent as number | undefined,
-		gender: search.gender as string | undefined,
+	validateSearch: (
+		search: Record<string, unknown>,
+	): {
+		city?: string;
+		room_type?: string;
+		min_rent?: number;
+		max_rent?: number;
+		gender?: string;
+	} => ({
+		city: typeof search.city === "string" ? search.city : undefined,
+		room_type: typeof search.room_type === "string" ? search.room_type : undefined,
+		min_rent: typeof search.min_rent === "number" ? search.min_rent : undefined,
+		max_rent: typeof search.max_rent === "number" ? search.max_rent : undefined,
+		gender: typeof search.gender === "string" ? search.gender : undefined,
 	}),
 });
 
@@ -45,19 +53,20 @@ function BrowseListingsPage() {
 		gender_preference: searchParams.gender as ListingFilters["gender_preference"],
 	});
 
-	const [tempFilters, setTempFilters] = useState(filters);
+	// tempFilters drive the form inputs — only committed to `filters` on Apply
+	const [tempFilters, setTempFilters] = useState<ListingFilters>(filters);
 
-	const fetchListings = async (cursor?: Cursor, append = false) => {
+	const fetchListings = useCallback(async (activeFilters: ListingFilters, cursor?: Cursor, append = false) => {
 		try {
 			if (!append) setIsLoading(true);
 			else setIsLoadingMore(true);
 
 			const res = await searchListings({
-				city: filters.city || undefined,
-				roomType: filters.room_type,
-				minRent: filters.min_rent,
-				maxRent: filters.max_rent,
-				preferredGender: filters.gender_preference,
+				city: activeFilters.city || undefined,
+				roomType: activeFilters.room_type,
+				minRent: activeFilters.min_rent,
+				maxRent: activeFilters.max_rent,
+				preferredGender: activeFilters.gender_preference,
 				limit: 20,
 				cursorTime: cursor?.cursorTime,
 				cursorId: cursor?.cursorId,
@@ -75,14 +84,14 @@ function BrowseListingsPage() {
 			setIsLoading(false);
 			setIsLoadingMore(false);
 		}
-	};
+	}, []);
 
 	useEffect(() => {
-		fetchListings();
-	}, [filters]); // eslint-disable-line react-hooks/exhaustive-deps
+		fetchListings(filters);
+	}, [filters, fetchListings]);
 
 	const handleLoadMore = () => {
-		if (nextCursor) fetchListings(nextCursor, true);
+		if (nextCursor) fetchListings(filters, nextCursor, true);
 	};
 
 	const handleApplyFilters = () => {
@@ -141,7 +150,7 @@ function BrowseListingsPage() {
 					<Input
 						placeholder="Search by city..."
 						value={tempFilters.city || ""}
-						onChange={(e) => setTempFilters({ ...tempFilters, city: e.target.value })}
+						onChange={(e) => setTempFilters((prev) => ({ ...prev, city: e.target.value }))}
 						onKeyDown={(e) => e.key === "Enter" && handleApplyFilters()}
 						className="pl-10"
 					/>
@@ -171,11 +180,11 @@ function BrowseListingsPage() {
 								<Select
 									value={tempFilters.room_type || "all"}
 									onValueChange={(value) =>
-										setTempFilters({
-											...tempFilters,
+										setTempFilters((prev) => ({
+											...prev,
 											room_type:
 												value === "all" ? undefined : (value as ListingFilters["room_type"]),
-										})
+										}))
 									}>
 									<SelectTrigger>
 										<SelectValue placeholder="Any" />
@@ -195,13 +204,13 @@ function BrowseListingsPage() {
 								<Select
 									value={tempFilters.gender_preference || "all"}
 									onValueChange={(value) =>
-										setTempFilters({
-											...tempFilters,
+										setTempFilters((prev) => ({
+											...prev,
 											gender_preference:
 												value === "all" ? undefined : (
 													(value as ListingFilters["gender_preference"])
 												),
-										})
+										}))
 									}>
 									<SelectTrigger>
 										<SelectValue placeholder="Any" />
@@ -221,12 +230,12 @@ function BrowseListingsPage() {
 								<Input
 									type="number"
 									placeholder="Min"
-									value={tempFilters.min_rent || ""}
+									value={tempFilters.min_rent ?? ""}
 									onChange={(e) =>
-										setTempFilters({
-											...tempFilters,
+										setTempFilters((prev) => ({
+											...prev,
 											min_rent: e.target.value ? parseInt(e.target.value) : undefined,
-										})
+										}))
 									}
 								/>
 							</div>
@@ -236,12 +245,12 @@ function BrowseListingsPage() {
 								<Input
 									type="number"
 									placeholder="Max"
-									value={tempFilters.max_rent || ""}
+									value={tempFilters.max_rent ?? ""}
 									onChange={(e) =>
-										setTempFilters({
-											...tempFilters,
+										setTempFilters((prev) => ({
+											...prev,
 											max_rent: e.target.value ? parseInt(e.target.value) : undefined,
-										})
+										}))
 									}
 								/>
 							</div>

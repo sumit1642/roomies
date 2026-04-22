@@ -1,8 +1,10 @@
-import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
+import { HeadContent, Outlet, Scripts, createRootRoute, Link } from "@tanstack/react-router";
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { TanStackDevtools } from "@tanstack/react-devtools";
 import { AuthProvider } from "#/context/AuthContext";
 import { Toaster } from "#/components/ui/sonner";
+import { Home } from "lucide-react";
+import { Button } from "#/components/ui/button";
 
 import appCss from "../styles.css?url";
 
@@ -33,8 +35,39 @@ export const Route = createRootRoute({
 			},
 		],
 	}),
+	notFoundComponent: NotFoundPage,
 	component: RootComponent,
 });
+
+function NotFoundPage() {
+	return (
+		<div className="min-h-screen flex flex-col items-center justify-center px-4 text-center">
+			<div className="mb-6">
+				<div className="flex size-16 items-center justify-center rounded-full bg-muted mx-auto mb-4">
+					<span className="text-3xl">🏠</span>
+				</div>
+				<h1 className="text-4xl font-bold text-(--sea-ink) mb-2">404</h1>
+				<h2 className="text-xl font-semibold text-(--sea-ink) mb-2">Page Not Found</h2>
+				<p className="text-muted-foreground max-w-sm mx-auto">
+					The page you&apos;re looking for doesn&apos;t exist or has been moved.
+				</p>
+			</div>
+			<div className="flex gap-3">
+				<Button asChild>
+					<Link to="/">
+						<Home className="size-4" />
+						Go Home
+					</Link>
+				</Button>
+				<Button
+					variant="outline"
+					onClick={() => window.history.back()}>
+					Go Back
+				</Button>
+			</div>
+		</div>
+	);
+}
 
 function RootComponent() {
 	return (

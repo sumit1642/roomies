@@ -132,7 +132,6 @@ export async function getListingPhotos(listingId: string): Promise<ListingPhoto[
 export async function uploadListingPhoto(listingId: string, formData: FormData): Promise<ListingPhoto> {
 	const res = await fetch(
 		`${import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api/v1"}/listings/${listingId}/photos`,
-		// `${import.meta.env.VITE_API_BASE_URL || "https://roomies-api.onrender.com/api/v1"}/listings/${listingId}/photos`,
 		{
 			method: "POST",
 			credentials: "include",
@@ -208,6 +207,7 @@ function toLegacyListingFromSearch(item: ListingSearchItem): Listing {
 	};
 }
 
+// FIX: ListingPropertySummary uses camelCase fields — was incorrectly using snake_case
 function toLegacyListingFromDetail(item: ListingDetail): Listing {
 	return {
 		id: item.listingId,
@@ -224,13 +224,13 @@ function toLegacyListingFromDetail(item: ListingDetail): Listing {
 		property:
 			item.property ?
 				{
-					id: item.property.property_id,
-					name: item.property.property_name,
+					id: item.property.propertyId,
+					name: item.property.propertyName,
 					city: item.property.city,
-					address: item.property.address_line,
-					pincode: item.property.pincode ?? undefined,
-					rating: item.property.average_rating,
-					rating_count: item.property.rating_count,
+					address: item.property.addressLine,
+					pincode: item.property.locality ?? undefined, // pincode not on summary; locality is closest optional
+					rating: item.property.averageRating,
+					rating_count: item.property.ratingCount,
 				}
 			:	undefined,
 		owner: {

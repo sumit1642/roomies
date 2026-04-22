@@ -24,19 +24,27 @@ export interface RegisterPgOwnerInput {
 
 export type RegisterInput = RegisterStudentInput | RegisterPgOwnerInput;
 
+/**
+ * Login — returns full AuthResponse including accessToken + refreshToken.
+ * apiFetch sends X-Client-Transport: bearer in production so the backend
+ * includes them in the JSON body (not just HttpOnly cookies).
+ * Tokens are stored in tokenStore so subsequent requests use Bearer auth.
+ */
 export async function login(data: LoginInput): Promise<AuthResponse> {
 	const res = await apiFetch<ApiSuccess<AuthResponse>>("/auth/login", {
 		method: "POST",
 		body: JSON.stringify(data),
 	});
-	// In prod the response body contains accessToken + refreshToken because
-	// apiFetch sends X-Client-Transport: bearer. Store them immediately.
+	// Store tokens immediately in production (cross-domain auth)
 	if (import.meta.env.PROD && res.data?.accessToken && res.data?.refreshToken) {
 		tokenStore.setTokens(res.data.accessToken, res.data.refreshToken);
 	}
 	return res.data;
 }
 
+/**
+ * Register — same as login, tokens are returned in body and stored.
+ */
 export async function register(data: RegisterInput): Promise<AuthResponse> {
 	const res = await apiFetch<ApiSuccess<AuthResponse>>("/auth/register", {
 		method: "POST",
@@ -53,8 +61,11 @@ export async function getMe(): Promise<MeResponse> {
 	return res.data;
 }
 
+/**
+ * Logout — revokes the current session token.
+ * In production, sends the refresh token in the body (no cookie available cross-domain).
+ */
 export async function logout(): Promise<void> {
-	// In prod send the refresh token in the body (no cookie available cross-domain)
 	const rt = import.meta.env.PROD ? tokenStore.getRefreshToken() : undefined;
 	await apiFetch<ApiMessage>("/auth/logout", {
 		method: "POST",

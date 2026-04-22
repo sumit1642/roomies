@@ -1,3 +1,4 @@
+// src/types/enums.ts
 export const AccountStatus = {
 	ACTIVE: "active",
 	SUSPENDED: "suspended",
@@ -70,9 +71,8 @@ export const ListingStatus = {
 	FILLED: "filled",
 	EXPIRED: "expired",
 	DEACTIVATED: "deactivated",
-	INACTIVE: "deactivated",
 } as const;
-export type ListingStatus = (typeof ListingStatus)[Exclude<keyof typeof ListingStatus, "INACTIVE">] | "deactivated";
+export type ListingStatus = (typeof ListingStatus)[keyof typeof ListingStatus];
 
 export const PropertyType = {
 	PG: "pg",
@@ -146,19 +146,24 @@ export const ReportStatus = {
 } as const;
 export type ReportStatus = (typeof ReportStatus)[keyof typeof ReportStatus];
 
+/**
+ * All notification_type_enum values from the DB schema (migrations 001 + 002).
+ * Must stay in sync with notificationWorker.js NOTIFICATION_MESSAGES map.
+ */
 export const NotificationType = {
-	NEW_INTEREST: "interest_request_received",
-	INTEREST_ACCEPTED: "interest_request_accepted",
-	INTEREST_REJECTED: "interest_request_declined",
-	INTEREST_WITHDRAWN: "interest_request_withdrawn",
+	INTEREST_REQUEST_RECEIVED: "interest_request_received",
+	INTEREST_REQUEST_ACCEPTED: "interest_request_accepted",
+	INTEREST_REQUEST_DECLINED: "interest_request_declined",
+	INTEREST_REQUEST_WITHDRAWN: "interest_request_withdrawn",
 	CONNECTION_CONFIRMED: "connection_confirmed",
 	CONNECTION_REQUESTED: "connection_requested",
-	NEW_RATING: "rating_received",
+	RATING_RECEIVED: "rating_received",
 	LISTING_EXPIRING: "listing_expiring",
 	LISTING_EXPIRED: "listing_expired",
-	LISTING_UPDATE: "listing_filled",
+	LISTING_FILLED: "listing_filled",
 	VERIFICATION_APPROVED: "verification_approved",
 	VERIFICATION_REJECTED: "verification_rejected",
+	// Added in migration 002
 	VERIFICATION_PENDING: "verification_pending",
 	NEW_MESSAGE: "new_message",
 } as const;

@@ -26,13 +26,26 @@ export interface AuthUser {
 	role?: Role;
 	isEmailVerified: boolean;
 }
+
+/**
+ * Full auth response from /auth/login, /auth/register, /auth/refresh, /auth/google/callback.
+ * Backend ALWAYS returns accessToken + refreshToken in the body (belt + suspenders approach).
+ * In production (cross-domain), frontend relies on these body tokens instead of HttpOnly cookies.
+ */
 export interface AuthResponse {
 	user: AuthUser;
 	sid: string;
+	// These ARE returned by the backend — auth.controller.js always calls
+	// res.json({ status: "success", data: tokens }) where tokens = buildTokenResponse(...)
+	// which includes { accessToken, refreshToken, user, sid }
+	accessToken: string;
+	refreshToken: string;
 }
+
 export interface MeResponse extends AuthUser {
 	sid: string;
 }
+
 export interface SessionItem {
 	sid: string;
 	isCurrent: boolean;
@@ -45,6 +58,7 @@ export interface Cursor {
 	cursorTime: string;
 	cursorId: string;
 }
+
 export interface PaginatedResponse<T> {
 	items: T[];
 	nextCursor: Cursor | null;
@@ -55,10 +69,12 @@ export interface ApiSuccess<T> {
 	status: "success";
 	data: T;
 }
+
 export interface ApiMessage {
 	status: "success";
 	message: string;
 }
+
 export interface ApiError {
 	status: "error";
 	message: string;
@@ -68,6 +84,8 @@ export interface ApiError {
 }
 
 // ── Profiles ──────────────────────────────────────────────────────────────────
+
+/** Matches backend GET /students/:userId/profile response */
 export interface StudentProfile {
 	profile_id: string;
 	user_id: string;
@@ -80,22 +98,27 @@ export interface StudentProfile {
 	year_of_study: number | null;
 	institution_id: string | null;
 	is_aadhaar_verified: boolean;
+	// Only returned for own profile (CASE WHEN $2::uuid = sp.user_id)
 	email: string | null;
 	is_email_verified: boolean;
 	average_rating: number;
 	rating_count: number;
 	created_at: string;
 }
+
+/** Matches backend GET /pg-owners/:userId/profile response */
 export interface PgOwnerProfile {
 	profile_id: string;
 	user_id: string;
 	business_name: string;
 	owner_full_name: string;
 	business_description: string | null;
+	// Only returned for own profile (CASE WHEN $2::uuid = pop.user_id)
 	business_phone: string | null;
 	operating_since: number | null;
 	verification_status: VerificationStatus;
 	verified_at: string | null;
+	// Only returned for own profile
 	email: string | null;
 	is_email_verified: boolean;
 	average_rating: number;
@@ -108,10 +131,12 @@ export interface PreferencePair {
 	preferenceKey: PreferenceKey;
 	preferenceValue: string;
 }
+
 export interface PreferenceMetaValue {
 	value: string;
 	label: string;
 }
+
 export interface PreferenceMetaItem {
 	preferenceKey: PreferenceKey;
 	label: string;
@@ -125,23 +150,19 @@ export interface Amenity {
 	category: AmenityCategory;
 	iconName: string;
 }
+
+/** Matches backend GET /properties/:propertyId response */
 export interface Property {
 	property_id: string;
 	owner_id: string;
-	id?: string;
 	property_name: string;
-	name?: string;
 	description: string | null;
 	property_type: PropertyType;
 	address_line: string;
-	address?: string;
 	city: string;
-	state?: string;
 	locality: string | null;
 	landmark: string | null;
 	pincode: string | null;
-	is_verified?: boolean;
-	rating?: number;
 	latitude: number | null;
 	longitude: number | null;
 	house_rules: string | null;
@@ -153,9 +174,28 @@ export interface Property {
 	created_at: string;
 	updated_at: string;
 }
-export interface PropertyListItem extends Property {
+
+/** Matches backend GET /properties (list) response items */
+export interface PropertyListItem {
+	property_id: string;
+	owner_id?: string;
+	property_name: string;
+	description: string | null;
+	property_type: PropertyType;
+	address_line: string;
+	city: string;
+	locality: string | null;
+	landmark: string | null;
+	pincode: string | null;
+	house_rules: string | null;
+	status: PropertyStatus;
+	average_rating: number;
+	rating_count: number;
+	// Only on list response
 	amenity_count: number;
 	active_listing_count: number;
+	created_at: string;
+	updated_at: string;
 }
 
 // ── Listings ──────────────────────────────────────────────────────────────────
@@ -166,6 +206,12 @@ export interface ListingPhoto {
 	displayOrder: number;
 	createdAt: string;
 }
+
+/**
+ * Matches backend GET /listings (search) response items.
+ * Backend returns snake_case for some fields (cover_photo_url, property_name)
+ * but camelCase for renamed fields (rentPerMonth, depositAmount).
+ */
 export interface ListingSearchItem {
 	listingId: string;
 	listingType: ListingType;
@@ -180,11 +226,18 @@ export interface ListingSearchItem {
 	preferredGender: Gender | null;
 	availableFrom: string;
 	status: ListingStatus;
+	// Both may appear due to backend transformation
 	coverPhotoUrl?: string | null;
 	cover_photo_url?: string | null;
 	average_rating?: number;
 	property_name?: string | null;
+	created_at?: string;
 }
+
+/**
+ * Matches backend GET /listings/:listingId response.
+ * Backend uses fetchListingDetail which does toRupees() transformation.
+ */
 export interface ListingDetail {
 	listingId: string;
 	postedBy: string;
@@ -213,15 +266,37 @@ export interface ListingDetail {
 	status: ListingStatus;
 	viewsCount: number;
 	expiresAt: string | null;
+	createdAt?: string;
+	updatedAt?: string;
+	// From JOIN with users and profiles
 	poster_rating: number;
 	poster_rating_count: number;
 	poster_name: string;
 	amenities: Amenity[];
 	preferences: PreferencePair[];
 	photos: ListingPhoto[];
-	property: Property | null;
+	property: ListingPropertySummary | null;
 }
-// Saved listings uses legacy snake_case from the backend
+
+/** Embedded property summary within listing detail */
+export interface ListingPropertySummary {
+	propertyId: string;
+	propertyName: string;
+	propertyType: PropertyType;
+	addressLine: string;
+	city: string;
+	locality: string | null;
+	latitude: number | null;
+	longitude: number | null;
+	houseRules: string | null;
+	averageRating: number;
+	ratingCount: number;
+}
+
+/**
+ * Matches backend GET /listings/me/saved response items.
+ * Backend returns mixed snake_case + camelCase from getSavedListings.
+ */
 export interface SavedListingItem {
 	listing_id: string;
 	listing_type: ListingType;
@@ -236,11 +311,14 @@ export interface SavedListingItem {
 	property_name: string | null;
 	average_rating: number;
 	cover_photo_url: string | null;
+	// Backend does toRupees() transformation — these come back as camelCase
 	rentPerMonth: number;
 	depositAmount: number;
 }
 
 // ── Interest Requests ─────────────────────────────────────────────────────────
+
+/** Base interest request */
 export interface InterestRequest {
 	interestRequestId: string;
 	studentId: string;
@@ -250,6 +328,8 @@ export interface InterestRequest {
 	createdAt: string;
 	updatedAt: string;
 }
+
+/** Interest request with embedded student info (poster's view) */
 export interface InterestRequestWithStudent extends InterestRequest {
 	student: {
 		userId: string;
@@ -258,6 +338,8 @@ export interface InterestRequestWithStudent extends InterestRequest {
 		averageRating: number;
 	};
 }
+
+/** Interest request with embedded listing info (student's view) */
 export interface InterestRequestWithListing extends InterestRequest {
 	listing: {
 		listingId: string;
@@ -267,6 +349,8 @@ export interface InterestRequestWithListing extends InterestRequest {
 		rentPerMonth: number;
 	};
 }
+
+/** Response when interest is accepted — includes connectionId and whatsappLink */
 export interface AcceptedInterestResponse {
 	interestRequestId: string;
 	studentId: string;
@@ -278,6 +362,7 @@ export interface AcceptedInterestResponse {
 }
 
 // ── Connections ───────────────────────────────────────────────────────────────
+
 export interface ConnectionListItem {
 	connectionId: string;
 	connectionType: ConnectionType;
@@ -302,6 +387,7 @@ export interface ConnectionListItem {
 		averageRating: number;
 	};
 }
+
 export interface ConnectionDetail extends ConnectionListItem {
 	interestRequestId: string | null;
 	otherParty: ConnectionListItem["otherParty"] & { ratingCount: number };
@@ -322,9 +408,7 @@ export interface Notification {
 // ── Ratings ───────────────────────────────────────────────────────────────────
 export interface Rating {
 	ratingId: string;
-	id?: string;
 	reviewerId: string;
-	rating?: number;
 	revieweeType: RevieweeType;
 	revieweeId: string;
 	overallScore: number;
@@ -335,12 +419,14 @@ export interface Rating {
 	comment: string | null;
 	isVisible: boolean;
 	createdAt: string;
-	created_at?: string;
-	user?: {
-		name?: string;
-		avatar_url?: string | null;
+	connectionId?: string;
+	reviewee?: {
+		fullName: string;
+		profilePhotoUrl: string | null;
+		type: RevieweeType;
 	};
 }
+
 export interface PublicRating {
 	ratingId: string;
 	overallScore: number;
@@ -352,9 +438,16 @@ export interface PublicRating {
 	createdAt: string;
 	reviewer: { fullName: string; profilePhotoUrl: string | null };
 }
+
 export interface ConnectionRatings {
 	myRatings: Rating[];
 	theirRatings: Rating[];
+}
+
+// ── Submit rating response ────────────────────────────────────────────────────
+export interface SubmitRatingResponse {
+	ratingId: string;
+	createdAt: string;
 }
 
 // ── Contact Reveal ────────────────────────────────────────────────────────────
@@ -364,6 +457,7 @@ export interface StudentContactReveal {
 	email: string;
 	whatsapp_phone?: string;
 }
+
 export interface PgOwnerContactReveal {
 	user_id: string;
 	owner_full_name: string;
@@ -372,12 +466,13 @@ export interface PgOwnerContactReveal {
 	whatsapp_phone?: string;
 }
 
-// FIX: backend returns { count: number }, was { unreadCount: number }
+/** Backend returns { count: number } from GET /notifications/unread-count */
 export interface UnreadCountResponse {
 	count: number;
 }
 
-// ── Legacy compatibility route types ─────────────────────────────────────────
+// ── Legacy compatibility types (for legacy API wrappers) ──────────────────────
+
 export interface ListingFilters {
 	city?: string;
 	room_type?: RoomType;
@@ -386,6 +481,10 @@ export interface ListingFilters {
 	gender_preference?: Gender;
 }
 
+/**
+ * Legacy Listing shape used by legacy API wrappers.
+ * Use ListingDetail or ListingSearchItem for new code.
+ */
 export interface Listing {
 	id: string;
 	title: string;
@@ -420,6 +519,10 @@ export interface Listing {
 	interest_status?: string | null;
 }
 
+/**
+ * Legacy Connection shape used by legacy API wrappers.
+ * Use ConnectionListItem or ConnectionDetail for new code.
+ */
 export interface Connection {
 	id: string;
 	status: string;
@@ -442,4 +545,16 @@ export interface LegacyApiResponse<T> {
 	success: boolean;
 	data?: T;
 	message?: string;
+}
+
+// ── Property legacy shape (for propertiesApi wrapper) ────────────────────────
+export interface LegacyProperty {
+	id: string;
+	name: string;
+	address: string;
+	city: string;
+	state: string;
+	pincode: string;
+	description: string | null;
+	is_verified: boolean;
 }

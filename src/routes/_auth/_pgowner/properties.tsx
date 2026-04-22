@@ -28,6 +28,149 @@ export const Route = createFileRoute("/_auth/_pgowner/properties")({
 	component: PropertiesPage,
 });
 
+// ─── Form data type ───────────────────────────────────────────────────────────
+interface PropertyFormData {
+	propertyName: string;
+	addressLine: string;
+	city: string;
+	locality: string;
+	pincode: string;
+	description: string;
+	propertyType: "pg" | "hostel" | "shared_apartment";
+	houseRules: string;
+}
+
+// ─── PropertyForm defined OUTSIDE parent component ────────────────────────────
+// IMPORTANT: Defining a component inside another component causes React to treat
+// it as a new component type on every render, unmounting/remounting it and losing
+// focus after each keystroke. Define it at module level and pass props instead.
+interface PropertyFormProps {
+	formData: PropertyFormData;
+	onChange: (data: PropertyFormData) => void;
+	onSubmit: (e: React.FormEvent) => void;
+	isSubmitting: boolean;
+	isEditing: boolean;
+}
+
+function PropertyForm({ formData, onChange, onSubmit, isSubmitting, isEditing }: PropertyFormProps) {
+	return (
+		<form
+			onSubmit={onSubmit}
+			className="space-y-4">
+			<div className="space-y-2">
+				<Label htmlFor="propertyName">Property Name *</Label>
+				<Input
+					id="propertyName"
+					value={formData.propertyName}
+					onChange={(e) => onChange({ ...formData, propertyName: e.target.value })}
+					placeholder="e.g., Sunshine PG for Women"
+					required
+				/>
+			</div>
+
+			<div className="space-y-2">
+				<Label htmlFor="propertyType">Property Type *</Label>
+				<Select
+					value={formData.propertyType}
+					onValueChange={(value) =>
+						onChange({ ...formData, propertyType: value as "pg" | "hostel" | "shared_apartment" })
+					}>
+					<SelectTrigger>
+						<SelectValue />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="pg">PG</SelectItem>
+						<SelectItem value="hostel">Hostel</SelectItem>
+						<SelectItem value="shared_apartment">Shared Apartment</SelectItem>
+					</SelectContent>
+				</Select>
+			</div>
+
+			<div className="space-y-2">
+				<Label htmlFor="addressLine">Address *</Label>
+				<Input
+					id="addressLine"
+					value={formData.addressLine}
+					onChange={(e) => onChange({ ...formData, addressLine: e.target.value })}
+					placeholder="Street address"
+					required
+				/>
+			</div>
+
+			<div className="grid grid-cols-2 gap-4">
+				<div className="space-y-2">
+					<Label htmlFor="city">City *</Label>
+					<Input
+						id="city"
+						value={formData.city}
+						onChange={(e) => onChange({ ...formData, city: e.target.value })}
+						placeholder="City"
+						required
+					/>
+				</div>
+				<div className="space-y-2">
+					<Label htmlFor="locality">Locality</Label>
+					<Input
+						id="locality"
+						value={formData.locality}
+						onChange={(e) => onChange({ ...formData, locality: e.target.value })}
+						placeholder="Area / Locality"
+					/>
+				</div>
+			</div>
+
+			<div className="space-y-2">
+				<Label htmlFor="pincode">Pincode</Label>
+				<Input
+					id="pincode"
+					value={formData.pincode}
+					onChange={(e) => onChange({ ...formData, pincode: e.target.value })}
+					placeholder="6-digit pincode"
+					maxLength={6}
+				/>
+			</div>
+
+			<div className="space-y-2">
+				<Label htmlFor="description">Description</Label>
+				<Textarea
+					id="description"
+					value={formData.description}
+					onChange={(e) => onChange({ ...formData, description: e.target.value })}
+					placeholder="Brief description of your property"
+					rows={3}
+				/>
+			</div>
+
+			<div className="space-y-2">
+				<Label htmlFor="houseRules">House Rules</Label>
+				<Textarea
+					id="houseRules"
+					value={formData.houseRules}
+					onChange={(e) => onChange({ ...formData, houseRules: e.target.value })}
+					placeholder="Rules for tenants"
+					rows={2}
+				/>
+			</div>
+
+			<DialogFooter>
+				<Button
+					type="submit"
+					disabled={isSubmitting}>
+					{isSubmitting ?
+						<>
+							<Loader2 className="size-4 animate-spin mr-2" />
+							Saving...
+						</>
+					: isEditing ?
+						"Update Property"
+					:	"Create Property"}
+				</Button>
+			</DialogFooter>
+		</form>
+	);
+}
+
+// ─── Page component ───────────────────────────────────────────────────────────
 function PropertiesPage() {
 	const [properties, setProperties] = useState<PropertyListItem[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
@@ -36,16 +179,18 @@ function PropertiesPage() {
 	const [deleteConfirm, setDeleteConfirm] = useState<PropertyListItem | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 
-	const [formData, setFormData] = useState({
+	const defaultFormData: PropertyFormData = {
 		propertyName: "",
 		addressLine: "",
 		city: "",
 		locality: "",
 		pincode: "",
 		description: "",
-		propertyType: "pg" as "pg" | "hostel" | "shared_apartment",
+		propertyType: "pg",
 		houseRules: "",
-	});
+	};
+
+	const [formData, setFormData] = useState<PropertyFormData>(defaultFormData);
 
 	useEffect(() => {
 		fetchProperties();
@@ -64,16 +209,7 @@ function PropertiesPage() {
 	};
 
 	const resetForm = () => {
-		setFormData({
-			propertyName: "",
-			addressLine: "",
-			city: "",
-			locality: "",
-			pincode: "",
-			description: "",
-			propertyType: "pg",
-			houseRules: "",
-		});
+		setFormData(defaultFormData);
 	};
 
 	const handleOpenCreate = () => {
@@ -152,122 +288,6 @@ function PropertiesPage() {
 		}
 	};
 
-	const PropertyForm = () => (
-		<form
-			onSubmit={handleSubmit}
-			className="space-y-4">
-			<div className="space-y-2">
-				<Label htmlFor="propertyName">Property Name *</Label>
-				<Input
-					id="propertyName"
-					value={formData.propertyName}
-					onChange={(e) => setFormData({ ...formData, propertyName: e.target.value })}
-					placeholder="e.g., Sunshine PG for Women"
-					required
-				/>
-			</div>
-
-			<div className="space-y-2">
-				<Label htmlFor="propertyType">Property Type *</Label>
-				<Select
-					value={formData.propertyType}
-					onValueChange={(value) =>
-						setFormData({ ...formData, propertyType: value as "pg" | "hostel" | "shared_apartment" })
-					}>
-					<SelectTrigger>
-						<SelectValue />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="pg">PG</SelectItem>
-						<SelectItem value="hostel">Hostel</SelectItem>
-						<SelectItem value="shared_apartment">Shared Apartment</SelectItem>
-					</SelectContent>
-				</Select>
-			</div>
-
-			<div className="space-y-2">
-				<Label htmlFor="addressLine">Address *</Label>
-				<Input
-					id="addressLine"
-					value={formData.addressLine}
-					onChange={(e) => setFormData({ ...formData, addressLine: e.target.value })}
-					placeholder="Street address"
-					required
-				/>
-			</div>
-
-			<div className="grid grid-cols-2 gap-4">
-				<div className="space-y-2">
-					<Label htmlFor="city">City *</Label>
-					<Input
-						id="city"
-						value={formData.city}
-						onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-						placeholder="City"
-						required
-					/>
-				</div>
-				<div className="space-y-2">
-					<Label htmlFor="locality">Locality</Label>
-					<Input
-						id="locality"
-						value={formData.locality}
-						onChange={(e) => setFormData({ ...formData, locality: e.target.value })}
-						placeholder="Area / Locality"
-					/>
-				</div>
-			</div>
-
-			<div className="space-y-2">
-				<Label htmlFor="pincode">Pincode</Label>
-				<Input
-					id="pincode"
-					value={formData.pincode}
-					onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
-					placeholder="6-digit pincode"
-					maxLength={6}
-				/>
-			</div>
-
-			<div className="space-y-2">
-				<Label htmlFor="description">Description</Label>
-				<Textarea
-					id="description"
-					value={formData.description}
-					onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-					placeholder="Brief description of your property"
-					rows={3}
-				/>
-			</div>
-
-			<div className="space-y-2">
-				<Label htmlFor="houseRules">House Rules</Label>
-				<Textarea
-					id="houseRules"
-					value={formData.houseRules}
-					onChange={(e) => setFormData({ ...formData, houseRules: e.target.value })}
-					placeholder="Rules for tenants"
-					rows={2}
-				/>
-			</div>
-
-			<DialogFooter>
-				<Button
-					type="submit"
-					disabled={isSubmitting}>
-					{isSubmitting ?
-						<>
-							<Loader2 className="size-4 animate-spin mr-2" />
-							Saving...
-						</>
-					: editingProperty ?
-						"Update Property"
-					:	"Create Property"}
-				</Button>
-			</DialogFooter>
-		</form>
-	);
-
 	if (isLoading) {
 		return (
 			<div className="flex items-center justify-center min-h-100">
@@ -297,7 +317,13 @@ function PropertiesPage() {
 							<DialogTitle>Add New Property</DialogTitle>
 							<DialogDescription>Add a new PG property to start creating room listings</DialogDescription>
 						</DialogHeader>
-						<PropertyForm />
+						<PropertyForm
+							formData={formData}
+							onChange={setFormData}
+							onSubmit={handleSubmit}
+							isSubmitting={isSubmitting}
+							isEditing={false}
+						/>
 					</DialogContent>
 				</Dialog>
 			</div>
@@ -370,7 +396,13 @@ function PropertiesPage() {
 												<DialogTitle>Edit Property</DialogTitle>
 												<DialogDescription>Update your property details</DialogDescription>
 											</DialogHeader>
-											<PropertyForm />
+											<PropertyForm
+												formData={formData}
+												onChange={setFormData}
+												onSubmit={handleSubmit}
+												isSubmitting={isSubmitting}
+												isEditing={true}
+											/>
 										</DialogContent>
 									</Dialog>
 									<Button

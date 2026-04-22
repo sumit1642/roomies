@@ -183,3 +183,95 @@ comparison fails → CORS blocked.
 2. No X-Client-Transport header sent
 3. Backend sets lax cookies, frontend relies on cookies
 ```
+-----------------
+# Fix 2
+# Bug Fix Notes — Auth + Types + Production Deployment
+
+## Files Changed
+
+### 1. `src/types/api.ts` — REPLACE ENTIRELY
+**Fixes:**
+- Added `accessToken: string` and `refreshToken: string` to `AuthResponse` interface (they ARE returned by the backend in the JSON body)
+- Fixed `PropertyListItem` — removed incorrect legacy fields (`id`, `name`, `address`, etc.), now matches actual backend response
+- Fixed `ListingDetail.property` type — backend returns camelCase embedded object (`propertyName`, `propertyType`, `addressLine`, `averageRating`, `ratingCount`, `houseRules`) not snake_case — now typed as `ListingPropertySummary`
+- Fixed `SavedListingItem` — backend returns `rentPerMonth`/`depositAmount` as camelCase (after `toRupees()` transform) but other fields as snake_case
+- Added `SubmitRatingResponse` type (backend returns `{ ratingId, createdAt }`, not the full rating object)
+- Added `LegacyProperty` as a named export (was inline only)
+- Removed all the junk legacy fields (`id`, `name`, `address`, `rating`, `rating_count`, etc.) from `Property` — these don't exist in the backend response
+
+### 2. `src/types/enums.ts` — REPLACE ENTIRELY
+**Fixes:**
+- Added `VERIFICATION_PENDING: "verification_pending"` to `NotificationType` (added in migration 002 but missing from frontend)
+- Cleaned up `ListingStatus` type — was broken with duplicate `"deactivated"` in union
+
+### 3. `src/context/AuthContext.tsx` — REPLACE ENTIRELY
+**Fixes:**
+- `login()` now correctly calls `tokenStore.setTokens(data.accessToken, data.refreshToken)` — `accessToken` and `refreshToken` are now properly typed on `AuthResponse` so no more TypeScript error
+- Added defensive warning log if tokens are missing in production
+
+### 4. `src/lib/api/auth.ts` — REPLACE ENTIRELY
+**Fixes:**
+- `login()` and `register()` now correctly reference `res.data.accessToken` and `res.data.refreshToken` — no TypeScript error
+- `logout()` sends refresh token in body for production cross-domain
+
+### 5. `src/lib/api.ts` — REPLACE ENTIRELY
+**Fixes:**
+- Better inline documentation
+- Silent refresh now clears tokens on failure
+- No functional changes, just cleaner code
+
+### 6. `src/routes/_auth/_pgowner/listings.tsx` — REPLACE ENTIRELY
+**Fixes:**
+- Removed unused `Edit` import
+- Removed unused `l` variable (unused filter function)
+- Removed unused `getPropertyName` function
+- Removed unused `selectedPropertyFilter` state (was set but never used in filter logic since `listingId` search doesn't support property_id filtering)
+
+### 7. `src/routes/_auth/listing.$id.tsx` — REPLACE ENTIRELY
+**Fixes:**
+- `listing.property` field access now uses correct camelCase field names: `property.propertyName`, `property.addressLine`, `property.averageRating`, `property.ratingCount`, `property.houseRules` (backend returns camelCase object via `fetchListingDetail`)
+- Added address line display
+- Added pincode display
+- Added preferences display
+- Added bed type display
+- Added "no owner name" fallback: `listing.poster_name || "Property Owner"`
+- Filtered out `processing:` placeholder photos from gallery
+- Added deposit amount display next to rent in header
+
+### 8. `src/lib/api/properties.ts` — REPLACE
+**Fixes:**
+- Removed inline `LegacyProperty` type definition (now imported from types)
+- Cleaner imports
+
+### 9. `src/lib/api/ratings.ts` — REPLACE ENTIRELY
+**Fixes:**
+- `submitRating()` now returns `SubmitRatingResponse` (`{ ratingId, createdAt }`) matching backend
+- Added separate `getPublicUserRatings()` and `getPublicPropertyRatings()` functions (backend has separate endpoints)
+- Added `getMyGivenRatings()` function
+- `ratingsApi.createRating()` now requires proper `connectionId` and `revieweeType` (not a fake UUID)
+
+### 10. `src/lib/api/connections.ts` — REPLACE
+**Fixes:**
+- `confirmConnection()` returns the correct response shape from the backend
+
+---
+
+## Why Owner Names Were Not Showing
+
+The `listing.property` object in `ListingDetail` was typed with snake_case fields like `property_name`, `address_line`, `average_rating` — but the backend's `fetchListingDetail` function builds the embedded property object with **camelCase keys** via `JSONB_BUILD_OBJECT('propertyName', p.property_name, 'addressLine', p.address_line, ...)`.
+
+So `listing.property.property_name` was always `undefined` — the actual value was at `listing.property.propertyName`.
+
+## Why Tokens Were Lost in Production
+
+1. `AuthResponse` type was missing `accessToken`/`refreshToken` fields → TypeScript prevented accessing them → tokens were never stored
+2. Even if TypeScript was ignored, `AuthContext.login()` was never calling `tokenStore.setTokens()` with the actual token values
+
+## Deployed Environment Notes
+
+Your Render deploy vars look correct. The key ones for cross-domain auth:
+- `TRUST_PROXY=1` ✓ (needed for Render's proxy layer)  
+- `ALLOWED_ORIGINS=https://roomies-lilac.vercel.app` ✓ (no trailing slash — correct)
+- `NODE_ENV=production` ✓ (enables sameSite:none cookies as fallback)
+
+The backend `authenticate.js` already sets `sameSite: IS_PROD ? "none" : "lax"` and `secure: IS_PROD`. So cookies work correctly in production too. The bearer token transport is a belt-and-suspenders approach that makes auth work even when cookies are blocked by browser privacy settings.

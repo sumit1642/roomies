@@ -6,6 +6,7 @@ import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
 import { Label } from "#/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "#/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "#/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "#/components/ui/tabs";
 import { toast } from "#/components/ui/sonner";
 import { useAuth } from "#/context/AuthContext";
@@ -24,6 +25,8 @@ interface StudentFormData {
 	email: string;
 	password: string;
 	fullName: string;
+	gender: string;
+	phone: string;
 }
 
 interface PgOwnerFormData {
@@ -31,6 +34,7 @@ interface PgOwnerFormData {
 	password: string;
 	fullName: string;
 	businessName: string;
+	phone: string;
 }
 
 function RegisterPage() {
@@ -44,6 +48,8 @@ function RegisterPage() {
 		email: "",
 		password: "",
 		fullName: "",
+		gender: "",
+		phone: "",
 	});
 
 	const [pgOwnerForm, setPgOwnerForm] = useState<PgOwnerFormData>({
@@ -51,12 +57,12 @@ function RegisterPage() {
 		password: "",
 		fullName: "",
 		businessName: "",
+		phone: "",
 	});
 
 	const [errors, setErrors] = useState<Record<string, string>>({});
 	const [apiError, setApiError] = useState<string | null>(null);
 
-	// FIX: was calling navigate() during render. Use useEffect instead.
 	useEffect(() => {
 		if (!isLoading && user) {
 			navigate({ to: "/dashboard" });
@@ -98,9 +104,7 @@ function RegisterPage() {
 		try {
 			const response = await register(formData);
 			setAuth(response);
-			toast.success("Account created successfully!", {
-				description: "Welcome to Roomies!",
-			});
+			toast.success("Account created!", { description: "Welcome to Roomies!" });
 			navigate({ to: "/dashboard" });
 		} catch (error) {
 			if (error instanceof ApiClientError) {
@@ -124,51 +128,45 @@ function RegisterPage() {
 		}
 	};
 
-	const handleGoogleSignIn = () => {
-		toast.info("Google Sign-In coming soon", {
-			description: "We're working on adding Google authentication",
-		});
-	};
-
 	return (
 		<div className="min-h-screen flex flex-col">
-			{/* Header */}
 			<header className="border-b border-border/40 bg-(--header-bg)">
-				<div className="mx-auto flex h-16 max-w-6xl items-center px-4">
+				<div className="mx-auto flex h-14 max-w-6xl items-center px-4">
 					<Link
 						to="/"
 						className="flex items-center gap-2">
-						<div className="flex size-9 items-center justify-center rounded-lg bg-(--lagoon) text-white">
-							<Home className="size-5" />
+						<div className="flex size-8 items-center justify-center rounded-lg bg-(--lagoon) text-white">
+							<Home className="size-4" />
 						</div>
-						<span className="text-xl font-bold text-(--sea-ink)">Roomies</span>
+						<span className="text-lg font-bold text-(--sea-ink)">Roomies</span>
 					</Link>
 				</div>
 			</header>
 
-			{/* Main */}
-			<main className="flex flex-1 items-center justify-center px-4 py-12">
+			<main className="flex flex-1 items-center justify-center px-4 py-8">
 				<Card className="w-full max-w-md">
-					<CardHeader className="text-center">
-						<CardTitle className="text-2xl">Create Account</CardTitle>
-						<CardDescription>Join Roomies to find your perfect accommodation</CardDescription>
+					<CardHeader className="pb-4 text-center">
+						<CardTitle className="text-xl">Create Account</CardTitle>
+						<CardDescription className="text-xs">
+							Join Roomies to find your perfect accommodation
+						</CardDescription>
 					</CardHeader>
 					<CardContent>
 						<Tabs
 							value={selectedRole}
 							onValueChange={(value) => setSelectedRole(value as "student" | "pg_owner")}
-							className="mb-6">
-							<TabsList className="grid w-full grid-cols-2">
+							className="mb-4">
+							<TabsList className="grid w-full grid-cols-2 h-8">
 								<TabsTrigger
 									value="student"
-									className="gap-2">
-									<GraduationCap className="size-4" />
+									className="gap-1.5 text-xs h-7">
+									<GraduationCap className="size-3.5" />
 									Student
 								</TabsTrigger>
 								<TabsTrigger
 									value="pg_owner"
-									className="gap-2">
-									<Building2 className="size-4" />
+									className="gap-1.5 text-xs h-7">
+									<Building2 className="size-3.5" />
 									PG Owner
 								</TabsTrigger>
 							</TabsList>
@@ -176,57 +174,74 @@ function RegisterPage() {
 
 						<form
 							onSubmit={handleSubmit}
-							className="space-y-4">
+							className="space-y-3">
 							{apiError && (
-								<div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+								<div className="rounded-lg bg-destructive/10 p-2.5 text-xs text-destructive">
 									{apiError}
 								</div>
 							)}
 
-							<div className="space-y-2">
-								<Label htmlFor="fullName">Full Name</Label>
-								<Input
-									id="fullName"
-									type="text"
-									placeholder="Enter your full name"
-									value={selectedRole === "student" ? studentForm.fullName : pgOwnerForm.fullName}
-									onChange={(e) => {
-										if (selectedRole === "student") {
-											setStudentForm({ ...studentForm, fullName: e.target.value });
-										} else {
-											setPgOwnerForm({ ...pgOwnerForm, fullName: e.target.value });
-										}
-									}}
-									disabled={isSubmitting}
-								/>
-								{errors.fullName && <p className="text-sm text-destructive">{errors.fullName}</p>}
-							</div>
-
-							{selectedRole === "pg_owner" && (
-								<div className="space-y-2">
-									<Label htmlFor="businessName">Business Name</Label>
+							<div className={selectedRole === "pg_owner" ? "grid grid-cols-2 gap-2" : ""}>
+								<div className="space-y-1">
+									<Label
+										htmlFor="fullName"
+										className="text-xs">
+										Full Name
+									</Label>
 									<Input
-										id="businessName"
+										id="fullName"
 										type="text"
-										placeholder="Enter your PG/hostel name"
-										value={pgOwnerForm.businessName}
-										onChange={(e) =>
-											setPgOwnerForm({ ...pgOwnerForm, businessName: e.target.value })
-										}
+										placeholder="Your name"
+										className="h-9 text-sm"
+										value={selectedRole === "student" ? studentForm.fullName : pgOwnerForm.fullName}
+										onChange={(e) => {
+											if (selectedRole === "student") {
+												setStudentForm({ ...studentForm, fullName: e.target.value });
+											} else {
+												setPgOwnerForm({ ...pgOwnerForm, fullName: e.target.value });
+											}
+										}}
 										disabled={isSubmitting}
 									/>
-									{errors.businessName && (
-										<p className="text-sm text-destructive">{errors.businessName}</p>
-									)}
+									{errors.fullName && <p className="text-xs text-destructive">{errors.fullName}</p>}
 								</div>
-							)}
 
-							<div className="space-y-2">
-								<Label htmlFor="email">Email</Label>
+								{selectedRole === "pg_owner" && (
+									<div className="space-y-1">
+										<Label
+											htmlFor="businessName"
+											className="text-xs">
+											Business Name
+										</Label>
+										<Input
+											id="businessName"
+											type="text"
+											placeholder="PG / hostel name"
+											className="h-9 text-sm"
+											value={pgOwnerForm.businessName}
+											onChange={(e) =>
+												setPgOwnerForm({ ...pgOwnerForm, businessName: e.target.value })
+											}
+											disabled={isSubmitting}
+										/>
+										{errors.businessName && (
+											<p className="text-xs text-destructive">{errors.businessName}</p>
+										)}
+									</div>
+								)}
+							</div>
+
+							<div className="space-y-1">
+								<Label
+									htmlFor="email"
+									className="text-xs">
+									Email
+								</Label>
 								<Input
 									id="email"
 									type="email"
 									placeholder="you@example.com"
+									className="h-9 text-sm"
 									value={selectedRole === "student" ? studentForm.email : pgOwnerForm.email}
 									onChange={(e) => {
 										if (selectedRole === "student") {
@@ -237,16 +252,71 @@ function RegisterPage() {
 									}}
 									disabled={isSubmitting}
 								/>
-								{errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
+								{errors.email && <p className="text-xs text-destructive">{errors.email}</p>}
 							</div>
 
-							<div className="space-y-2">
-								<Label htmlFor="password">Password</Label>
+							<div className={selectedRole === "student" ? "grid grid-cols-2 gap-2" : ""}>
+								<div className="space-y-1">
+									<Label
+										htmlFor="phone"
+										className="text-xs">
+										Phone <span className="text-muted-foreground font-normal">(optional)</span>
+									</Label>
+									<Input
+										id="phone"
+										type="tel"
+										placeholder="10-digit number"
+										className="h-9 text-sm"
+										value={selectedRole === "student" ? studentForm.phone : pgOwnerForm.phone}
+										onChange={(e) => {
+											if (selectedRole === "student") {
+												setStudentForm({ ...studentForm, phone: e.target.value });
+											} else {
+												setPgOwnerForm({ ...pgOwnerForm, phone: e.target.value });
+											}
+										}}
+										disabled={isSubmitting}
+									/>
+								</div>
+
+								{selectedRole === "student" && (
+									<div className="space-y-1">
+										<Label
+											htmlFor="gender"
+											className="text-xs">
+											Gender <span className="text-muted-foreground font-normal">(optional)</span>
+										</Label>
+										<Select
+											value={studentForm.gender}
+											onValueChange={(value) =>
+												setStudentForm({ ...studentForm, gender: value })
+											}>
+											<SelectTrigger className="h-9 text-sm">
+												<SelectValue placeholder="Select" />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="male">Male</SelectItem>
+												<SelectItem value="female">Female</SelectItem>
+												<SelectItem value="other">Other</SelectItem>
+												<SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
+											</SelectContent>
+										</Select>
+									</div>
+								)}
+							</div>
+
+							<div className="space-y-1">
+								<Label
+									htmlFor="password"
+									className="text-xs">
+									Password
+								</Label>
 								<div className="relative">
 									<Input
 										id="password"
 										type={showPassword ? "text" : "password"}
 										placeholder="Min 8 chars, letter & number"
+										className="h-9 text-sm pr-9"
 										value={selectedRole === "student" ? studentForm.password : pgOwnerForm.password}
 										onChange={(e) => {
 											if (selectedRole === "student") {
@@ -260,44 +330,48 @@ function RegisterPage() {
 									<button
 										type="button"
 										onClick={() => setShowPassword(!showPassword)}
-										className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+										className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
 										{showPassword ?
-											<EyeOff className="size-4" />
-										:	<Eye className="size-4" />}
+											<EyeOff className="size-3.5" />
+										:	<Eye className="size-3.5" />}
 									</button>
 								</div>
-								{errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
+								{errors.password && <p className="text-xs text-destructive">{errors.password}</p>}
 							</div>
 
 							<Button
 								type="submit"
-								className="w-full"
+								className="w-full h-9"
 								disabled={isSubmitting}>
 								{isSubmitting ?
 									<>
-										<Loader2 className="size-4 animate-spin" />
-										Creating account...
+										<Loader2 className="size-3.5 animate-spin" />
+										Creating...
 									</>
 								:	"Create Account"}
 							</Button>
 						</form>
 
-						<div className="relative my-6">
+						<div className="relative my-4">
 							<div className="absolute inset-0 flex items-center">
 								<div className="w-full border-t border-border" />
 							</div>
 							<div className="relative flex justify-center text-xs uppercase">
-								<span className="bg-card px-2 text-muted-foreground">Or continue with</span>
+								<span className="bg-card px-2 text-muted-foreground">Or</span>
 							</div>
 						</div>
 
 						<Button
 							variant="outline"
-							className="w-full"
-							onClick={handleGoogleSignIn}
+							className="w-full h-9 text-sm"
+							onClick={() =>
+								toast.info("Google Sign-In coming soon", {
+									description: "We're working on adding Google authentication",
+								})
+							}
 							disabled={isSubmitting}>
 							<svg
-								className="size-4"
+								className="size-3.5"
 								viewBox="0 0 24 24">
 								<path
 									fill="currentColor"
@@ -319,8 +393,8 @@ function RegisterPage() {
 							Continue with Google
 						</Button>
 					</CardContent>
-					<CardFooter className="justify-center">
-						<p className="text-sm text-muted-foreground">
+					<CardFooter className="justify-center pt-0">
+						<p className="text-xs text-muted-foreground">
 							Already have an account?{" "}
 							<Link
 								to="/login"

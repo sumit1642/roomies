@@ -1,5 +1,5 @@
 // src/lib/api/listings.ts
-import { apiFetch } from "../api";
+import { apiFetch, tokenStore } from "../api";
 import type {
 	ApiSuccess,
 	ApiMessage,
@@ -30,7 +30,6 @@ export interface ListingSearchParams {
 	amenityIds?: string[];
 	lat?: number;
 	lng?: number;
-	/** Radius in metres (100–50000). Backend param name is "radius". */
 	radius?: number;
 	cursorTime?: string;
 	cursorId?: string;
@@ -122,25 +121,37 @@ export async function deleteListing(listingId: string): Promise<void> {
 	await apiFetch<ApiMessage>(`/listings/${listingId}`, { method: "DELETE" });
 }
 
-// Photos
 export async function getListingPhotos(listingId: string): Promise<ListingPhoto[]> {
 	const res = await apiFetch<ApiSuccess<ListingPhoto[]>>(`/listings/${listingId}/photos`);
 	return res.data;
 }
 
 export async function uploadListingPhoto(listingId: string, formData: FormData): Promise<ListingPhoto> {
-	const res = await fetch(
-		`${import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api/v1"}/listings/${listingId}/photos`,
-		{
-			method: "POST",
-			credentials: "include",
-			body: formData,
-		},
-	);
+	const BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api/v1";
+	const IS_PROD = import.meta.env.PROD;
+
+	const headers: Record<string, string> = {};
+
+	if (IS_PROD) {
+		headers["X-Client-Transport"] = "bearer";
+		const at = tokenStore.getAccessToken();
+		if (at) {
+			headers["Authorization"] = `Bearer ${at}`;
+		}
+	}
+
+	const res = await fetch(`${BASE}/listings/${listingId}/photos`, {
+		method: "POST",
+		headers,
+		credentials: IS_PROD ? "omit" : "include",
+		body: formData,
+	});
+
 	if (!res.ok) {
-		const body = await res.json();
+		const body = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
 		throw new Error(body.message || "Failed to upload photo");
 	}
+
 	const json = (await res.json()) as ApiSuccess<ListingPhoto>;
 	return json.data;
 }
@@ -163,7 +174,6 @@ export async function reorderPhotos(
 	});
 }
 
-// Saved listings
 export async function getSavedListings(cursor?: Cursor): Promise<PaginatedResponse<SavedListingItem>> {
 	const searchParams = new URLSearchParams();
 	if (cursor) {
@@ -177,6 +187,11 @@ export async function getSavedListings(cursor?: Cursor): Promise<PaginatedRespon
 	return res.data;
 }
 
+export async function getSavedListingIds(): Promise<Set<string>> {
+	const res = await getSavedListings();
+	return new Set(res.items.map((l) => l.listing_id));
+}
+
 export async function saveListing(listingId: string): Promise<void> {
 	await apiFetch<ApiMessage>(`/listings/${listingId}/save`, { method: "POST" });
 }
@@ -185,24 +200,14 @@ export async function unsaveListing(listingId: string): Promise<void> {
 	await apiFetch<ApiMessage>(`/listings/${listingId}/save`, { method: "DELETE" });
 }
 
-// ── Legacy adapters ───────────────────────────────────────────────────────────
-// These map the real API response shapes to the legacy Listing type used by
-// older parts of the codebase. Field names follow the actual backend response
-// (snake_case for searchListings, camelCase for getListing/fetchListingDetail).
-
 function toLegacyListingFromSearch(item: ListingSearchItem): Listing {
 	return {
-		// listing_id is snake_case from backend searchListings spread
 		id: item.listing_id,
 		title: item.title,
-		// room_type is snake_case
 		room_type: item.room_type,
-		// preferred_gender is snake_case
 		gender_preference: item.preferred_gender ?? "prefer_not_to_say",
-		// rentPerMonth is camelCase (toRupees transform)
 		rent_amount: item.rentPerMonth,
 		deposit_amount: item.depositAmount,
-		// available_from is snake_case
 		available_from: item.available_from,
 		status: item.status,
 		property: {
@@ -214,23 +219,17 @@ function toLegacyListingFromSearch(item: ListingSearchItem): Listing {
 
 function toLegacyListingFromDetail(item: ListingDetail): Listing {
 	return {
-		// listing_id is snake_case (raw pg column, spread by toRupees)
 		id: item.listing_id,
 		title: item.title,
 		description: item.description,
 		property_id: item.property_id ?? undefined,
-		// room_type is snake_case
 		room_type: item.room_type,
-		// preferred_gender is snake_case
 		gender_preference: item.preferred_gender ?? "prefer_not_to_say",
-		// rentPerMonth and depositAmount are camelCase (toRupees transform)
 		rent_amount: item.rentPerMonth,
 		deposit_amount: item.depositAmount,
-		// available_from is snake_case
 		available_from: item.available_from,
 		amenities: item.amenities.map((a) => a.name),
 		status: item.status,
-		// property is camelCase (JSONB_BUILD_OBJECT in fetchListingDetail)
 		property:
 			item.property ?
 				{
@@ -243,7 +242,6 @@ function toLegacyListingFromDetail(item: ListingDetail): Listing {
 				}
 			:	undefined,
 		owner: {
-			// poster_name is snake_case
 			name: item.poster_name,
 		},
 	};

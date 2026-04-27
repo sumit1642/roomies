@@ -63,10 +63,17 @@ export async function getMe(): Promise<MeResponse> {
 
 /**
  * Logout — revokes the current session token.
- * In production, sends the refresh token in the body (no cookie available cross-domain).
+ *
+ * The backend POST /auth/logout requires a `refreshToken` in the request body.
+ * We always include it regardless of environment:
+ *   - In production: token comes from sessionStorage via tokenStore.
+ *   - In development: cookies handle auth, but the backend also checks
+ *     req.body.refreshToken first, so including it is safe and correct.
+ *
+ * Failing to send the token causes a 401 from the backend.
  */
 export async function logout(): Promise<void> {
-	const rt = import.meta.env.PROD ? tokenStore.getRefreshToken() : undefined;
+	const rt = tokenStore.getRefreshToken();
 	await apiFetch<ApiMessage>("/auth/logout", {
 		method: "POST",
 		body: rt ? JSON.stringify({ refreshToken: rt }) : undefined,

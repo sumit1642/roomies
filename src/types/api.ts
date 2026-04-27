@@ -42,7 +42,7 @@ export interface SessionItem {
 	sid: string;
 	isCurrent: boolean;
 	expiresAt: string;
-	issuedAt: string;
+	issuedAt: string | null;
 }
 
 // ── Cursor ────────────────────────────────────────────────────────────────────
@@ -220,6 +220,8 @@ export interface ListingSearchItem {
 	depositAmount: number;
 	compatibilityScore: number;
 	compatibilityAvailable: boolean;
+	/** Percent above/below local median rent. null if no index data. */
+	rentDeviation: number | null;
 }
 
 export interface ListingDetail {
@@ -266,6 +268,16 @@ export interface ListingDetail {
 	// Compatibility (only present if fetched with userId)
 	compatibilityScore?: number;
 	compatibilityAvailable?: boolean;
+	/** Percent above/below local median rent. null if no index data. */
+	rentDeviation?: number | null;
+	/** Local rent percentile data. null if no index data. */
+	rentIndex?: {
+		p25: number;
+		p50: number;
+		p75: number;
+		sampleCount: number;
+		resolution: "locality" | "city";
+	} | null;
 }
 
 /** Embedded property summary within listing detail — camelCase (JSONB_BUILD_OBJECT) */
@@ -345,6 +357,7 @@ export interface AcceptedInterestResponse {
 	listingId: string;
 	status: "accepted";
 	connectionId: string;
+		/** WhatsApp link to reach the student. null if student has no phone. */
 	whatsappLink: string | null;
 	listingFilled: boolean;
 }
@@ -379,7 +392,14 @@ export interface ConnectionListItem {
 
 export interface ConnectionDetail extends ConnectionListItem {
 	interestRequestId: string | null;
-	otherParty: ConnectionListItem["otherParty"] & { ratingCount: number };
+	// Override otherParty to include ratingCount (returned by the detail endpoint)
+	otherParty: {
+		userId: string;
+		fullName: string;
+		profilePhotoUrl: string | null;
+		averageRating: number;
+		ratingCount: number;
+	};
 }
 
 // ── Notifications ─────────────────────────────────────────────────────────────

@@ -1,4 +1,3 @@
-// src/lib/api/listings.ts
 import { apiFetch, tokenStore } from "../api";
 import type {
 	ApiSuccess,
@@ -25,9 +24,11 @@ export interface ListingSearchParams {
 	minRent?: number;
 	maxRent?: number;
 	roomType?: RoomType;
+	bedType?: BedType;
 	preferredGender?: Gender;
 	availableFrom?: string;
 	amenityIds?: string[];
+	sortBy?: "recent" | "compatibility";
 	lat?: number;
 	lng?: number;
 	radius?: number;
@@ -44,9 +45,11 @@ export async function searchListings(params: ListingSearchParams): Promise<Pagin
 	if (params.minRent !== undefined) searchParams.set("minRent", String(params.minRent));
 	if (params.maxRent !== undefined) searchParams.set("maxRent", String(params.maxRent));
 	if (params.roomType) searchParams.set("roomType", params.roomType);
+	if (params.bedType) searchParams.set("bedType", params.bedType);
 	if (params.preferredGender) searchParams.set("preferredGender", params.preferredGender);
 	if (params.availableFrom) searchParams.set("availableFrom", params.availableFrom);
 	if (params.amenityIds?.length) searchParams.set("amenityIds", params.amenityIds.join(","));
+	if (params.sortBy) searchParams.set("sortBy", params.sortBy);
 	if (params.lat !== undefined) searchParams.set("lat", String(params.lat));
 	if (params.lng !== undefined) searchParams.set("lng", String(params.lng));
 	if (params.radius !== undefined) searchParams.set("radius", String(params.radius));
@@ -117,6 +120,57 @@ export async function updateListingStatus(listingId: string, status: ListingStat
 	return res.data;
 }
 
+export async function renewListing(listingId: string): Promise<{
+	listingId: string;
+	status: string;
+	expiresAt: string;
+	renewedFor: string;
+}> {
+	const res = await apiFetch<
+		ApiSuccess<{ listingId: string; status: string; expiresAt: string; renewedFor: string }>
+	>(`/listings/${listingId}/renew`, { method: "POST" });
+	return res.data;
+}
+
+export async function getListingAnalytics(listingId: string): Promise<{
+	listingId: string;
+	title: string;
+	status: string;
+	createdAt: string;
+	expiresAt: string | null;
+	views: number;
+	interests: {
+		total: number;
+		pending: number;
+		accepted: number;
+		declined: number;
+		withdrawn: number;
+		expired: number;
+	};
+	conversionRate: number | null;
+}> {
+	const res = await apiFetch<
+		ApiSuccess<{
+			listingId: string;
+			title: string;
+			status: string;
+			createdAt: string;
+			expiresAt: string | null;
+			views: number;
+			interests: {
+				total: number;
+				pending: number;
+				accepted: number;
+				declined: number;
+				withdrawn: number;
+				expired: number;
+			};
+			conversionRate: number | null;
+		}>
+	>(`/listings/${listingId}/analytics`);
+	return res.data;
+}
+
 export async function deleteListing(listingId: string): Promise<void> {
 	await apiFetch<ApiMessage>(`/listings/${listingId}`, { method: "DELETE" });
 }
@@ -126,7 +180,12 @@ export async function getListingPhotos(listingId: string): Promise<ListingPhoto[
 	return res.data;
 }
 
-export async function uploadListingPhoto(listingId: string, formData: FormData): Promise<ListingPhoto> {
+export interface PhotoUploadResult {
+	photoId: string;
+	status: "processing";
+}
+
+export async function uploadListingPhoto(listingId: string, formData: FormData): Promise<PhotoUploadResult> {
 	const BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api/v1";
 	const IS_PROD = import.meta.env.PROD;
 
@@ -152,7 +211,7 @@ export async function uploadListingPhoto(listingId: string, formData: FormData):
 		throw new Error(body.message || "Failed to upload photo");
 	}
 
-	const json = (await res.json()) as ApiSuccess<ListingPhoto>;
+	const json = (await res.json()) as ApiSuccess<PhotoUploadResult>;
 	return json.data;
 }
 

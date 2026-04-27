@@ -1,5 +1,4 @@
-// src/lib/api/profiles.ts
-import { apiFetch } from "../api";
+import { apiFetch, tokenStore } from "../api";
 import type {
 	ApiSuccess,
 	ApiMessage,
@@ -34,6 +33,48 @@ export async function updateStudentProfile(userId: string, data: UpdateStudentIn
 		body: JSON.stringify(data),
 	});
 	return res.data;
+}
+
+async function uploadPhotoMultipart(url: string, file: File): Promise<{ profilePhotoUrl: string }> {
+	const BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api/v1";
+	const IS_PROD = import.meta.env.PROD;
+
+	const headers: Record<string, string> = {};
+	if (IS_PROD) {
+		headers["X-Client-Transport"] = "bearer";
+		const at = tokenStore.getAccessToken();
+		if (at) headers["Authorization"] = `Bearer ${at}`;
+	}
+
+	const formData = new FormData();
+	formData.append("photo", file);
+
+	const res = await fetch(`${BASE}${url}`, {
+		method: "PUT",
+		headers,
+		credentials: IS_PROD ? "omit" : "include",
+		body: formData,
+	});
+
+	if (!res.ok) {
+		const body = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
+		throw new Error(body.message || "Failed to upload photo");
+	}
+
+	const json = (await res.json()) as ApiSuccess<{ profilePhotoUrl: string }>;
+	return json.data;
+}
+
+export async function uploadStudentPhoto(userId: string, file: File): Promise<{ profilePhotoUrl: string }> {
+	return uploadPhotoMultipart(`/students/${userId}/photo`, file);
+}
+
+export async function deleteStudentPhoto(userId: string): Promise<void> {
+	await apiFetch<ApiSuccess<{ profilePhotoUrl: null }>>(`/students/${userId}/photo`, { method: "DELETE" });
+}
+
+export async function uploadPgOwnerPhoto(userId: string, file: File): Promise<{ profilePhotoUrl: string }> {
+	return uploadPhotoMultipart(`/pg-owners/${userId}/photo`, file);
 }
 
 export async function getPreferencesMeta(): Promise<PreferenceMetaItem[]> {
@@ -90,14 +131,11 @@ export async function submitVerificationDocument(userId: string, data: SubmitDoc
 	});
 }
 
-// Student contact reveal — GET request
-// Returns email only for guests/unverified; email + whatsapp for verified users
 export async function revealStudentContact(userId: string): Promise<StudentContactReveal> {
 	const res = await apiFetch<ApiSuccess<StudentContactReveal>>(`/students/${userId}/contact/reveal`);
 	return res.data;
 }
 
-// PG Owner contact reveal — POST request (consumes quota slot)
 export async function revealPgOwnerContact(userId: string): Promise<PgOwnerContactReveal> {
 	const res = await apiFetch<ApiSuccess<PgOwnerContactReveal>>(`/pg-owners/${userId}/contact/reveal`, {
 		method: "POST",
@@ -105,11 +143,6 @@ export async function revealPgOwnerContact(userId: string): Promise<PgOwnerConta
 	return res.data;
 }
 
-/**
- * Get full student details for owner view.
- * Combines profile + contact reveal into a single convenient call.
- * Returns null if either call fails.
- */
 export async function getStudentFullDetails(userId: string): Promise<StudentFullDetails | null> {
 	try {
 		const [profile, contact] = await Promise.all([getStudentProfile(userId), revealStudentContact(userId)]);

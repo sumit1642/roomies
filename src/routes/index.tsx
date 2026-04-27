@@ -63,9 +63,7 @@ function LandingPage() {
 								size="lg"
 								asChild
 								className="w-full sm:w-auto">
-								<Link
-									to="/listings"
-									search={{ property_id: undefined }}>
+								<Link to="/browse">
 									<Users className="size-5" />
 									Find a Room
 								</Link>
@@ -163,11 +161,7 @@ function LandingPage() {
 								size="lg"
 								variant="outline"
 								asChild>
-								<Link
-									to="/listings"
-									search={{ property_id: undefined }}>
-									Browse Listings
-								</Link>
+								<Link to="/browse">Browse Listings</Link>
 							</Button>
 						</div>
 					</div>

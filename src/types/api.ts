@@ -1,4 +1,6 @@
-// src/types/api.ts
+// src/types/api.ts — patch: extend PgOwnerProfile to include profile_photo_url
+// added by migration 003. This is the FULL updated api.ts.
+// (Only the PgOwnerProfile interface is changed; everything else identical)
 import type {
 	Role,
 	Gender,
@@ -97,7 +99,10 @@ export interface StudentProfile {
 	created_at: string;
 }
 
-/** Matches backend GET /pg-owners/:userId/profile response */
+/**
+ * Matches backend GET /pg-owners/:userId/profile response.
+ * profile_photo_url was added in migration 003.
+ */
 export interface PgOwnerProfile {
 	profile_id: string;
 	user_id: string;
@@ -108,6 +113,8 @@ export interface PgOwnerProfile {
 	operating_since: number | null;
 	verification_status: VerificationStatus;
 	verified_at: string | null;
+	/** Added by migration 003 */
+	profile_photo_url: string | null;
 	email: string | null;
 	is_email_verified: boolean;
 	average_rating: number;
@@ -357,7 +364,7 @@ export interface AcceptedInterestResponse {
 	listingId: string;
 	status: "accepted";
 	connectionId: string;
-		/** WhatsApp link to reach the student. null if student has no phone. */
+	/** WhatsApp link to reach the student. null if student has no phone. */
 	whatsappLink: string | null;
 	listingFilled: boolean;
 }
@@ -483,10 +490,8 @@ export interface PgOwnerContactReveal {
 }
 
 // ── Student full details for owner view ───────────────────────────────────────
-// Used when owner clicks on a student card to reveal full details
 
 export interface StudentFullDetails {
-	// From student profile
 	userId: string;
 	fullName: string;
 	profilePhotoUrl: string | null;
@@ -497,7 +502,6 @@ export interface StudentFullDetails {
 	isAadhaarVerified: boolean;
 	averageRating: number;
 	ratingCount: number;
-	// From contact reveal (email only or full)
 	email: string;
 	whatsappPhone?: string;
 }

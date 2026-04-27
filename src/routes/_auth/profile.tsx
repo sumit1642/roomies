@@ -42,7 +42,6 @@ function getInitials(name: string): string {
 function ProfilePage() {
 	const { user, role, refreshUser } = useAuth();
 
-	// Don't render until user is loaded from auth context
 	if (!user?.userId) {
 		return (
 			<div className="flex items-center justify-center py-12">
@@ -101,7 +100,6 @@ function ProfilePhotoEditor({
 				</AvatarFallback>
 			</Avatar>
 
-			{/* Edit overlay button */}
 			<button
 				type="button"
 				onClick={() => fileInputRef.current?.click()}
@@ -110,7 +108,6 @@ function ProfilePhotoEditor({
 				<Camera className="size-5 text-white" />
 			</button>
 
-			{/* Hidden file input */}
 			<input
 				ref={fileInputRef}
 				type="file"
@@ -119,7 +116,6 @@ function ProfilePhotoEditor({
 				onChange={handleFileChange}
 			/>
 
-			{/* Small edit badge always visible */}
 			<div className="absolute -bottom-1 -right-1 flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-md pointer-events-none">
 				<Pencil className="size-3" />
 			</div>
@@ -145,7 +141,6 @@ function StudentProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 		dateOfBirth: "",
 	});
 
-	// Load profile and sessions on mount
 	useEffect(() => {
 		if (!userId) return;
 		async function fetchData() {
@@ -153,7 +148,6 @@ function StudentProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 				const [profileData, sessionsData] = await Promise.all([getStudentProfile(userId), getSessions()]);
 				setProfile(profileData);
 				setSessions(sessionsData);
-				// Populate form from fetched data
 				setFormData({
 					fullName: profileData.full_name || "",
 					bio: profileData.bio || "",
@@ -172,7 +166,6 @@ function StudentProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 	}, [userId]);
 
 	const handleCancelEdit = () => {
-		// Reset form back to current profile values
 		if (profile) {
 			setFormData({
 				fullName: profile.full_name || "",
@@ -221,11 +214,9 @@ function StudentProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 		<div className="mx-auto max-w-3xl px-4 py-8">
 			<h1 className="text-3xl font-bold mb-8">Profile</h1>
 
-			{/* Profile Header Card */}
 			<Card className="mb-6">
 				<CardContent className="p-6">
 					<div className="flex items-start gap-6">
-						{/* Photo with edit icon */}
 						<ProfilePhotoEditor
 							name={displayName}
 							photoUrl={profile?.profile_photo_url}
@@ -238,7 +229,6 @@ function StudentProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 							<div className="flex items-start justify-between gap-2">
 								<div>
 									<h2 className="text-xl font-semibold">{displayName}</h2>
-									{/* Email only shown if backend returns it (own profile) */}
 									{profile?.email && <p className="text-muted-foreground text-sm">{profile.email}</p>}
 									{profile?.course && (
 										<p className="text-sm text-muted-foreground mt-0.5">
@@ -247,7 +237,6 @@ function StudentProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 										</p>
 									)}
 								</div>
-								{/* Edit / Cancel toggle */}
 								{!isEditing ?
 									<Button
 										variant="outline"
@@ -292,7 +281,6 @@ function StudentProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 				</CardContent>
 			</Card>
 
-			{/* Edit Form — only shown in edit mode */}
 			{isEditing && (
 				<Card className="mb-6">
 					<CardHeader>
@@ -406,7 +394,6 @@ function StudentProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 				</Card>
 			)}
 
-			{/* View-only info when not editing */}
 			{!isEditing && (
 				<Card className="mb-6">
 					<CardHeader>
@@ -451,13 +438,11 @@ function StudentProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 				</Card>
 			)}
 
-			{/* Email Verification */}
 			<EmailVerificationSection
 				isVerified={isEmailVerified}
 				refreshUser={refreshUser}
 			/>
 
-			{/* Sessions */}
 			<SessionsSection
 				sessions={sessions}
 				onSessionsChange={setSessions}
@@ -580,19 +565,20 @@ function PgOwnerProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 	}
 
 	const displayName = profile?.owner_full_name || "Owner";
+	// Use profile_photo_url if the backend ever returns it (migration 003 added the column)
+	const photoUrl =
+		(profile as (PgOwnerProfile & { profile_photo_url?: string | null }) | null)?.profile_photo_url ?? null;
 
 	return (
 		<div className="mx-auto max-w-3xl px-4 py-8">
 			<h1 className="text-3xl font-bold mb-8">Profile</h1>
 
-			{/* Profile Header Card */}
 			<Card className="mb-6">
 				<CardContent className="p-6">
 					<div className="flex items-start gap-6">
-						{/* Photo with edit icon */}
 						<ProfilePhotoEditor
 							name={displayName}
-							photoUrl={null}
+							photoUrl={photoUrl}
 							onPhotoChange={() => {
 								toast.info("Photo upload coming soon");
 							}}
@@ -702,7 +688,6 @@ function PgOwnerProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 				</Card>
 			)}
 
-			{/* Edit Form */}
 			{isEditing && (
 				<Card className="mb-6">
 					<CardHeader>
@@ -790,7 +775,6 @@ function PgOwnerProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 				</Card>
 			)}
 
-			{/* View-only info when not editing */}
 			{!isEditing && (
 				<Card className="mb-6">
 					<CardHeader>
@@ -806,7 +790,6 @@ function PgOwnerProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 								label="Owner Name"
 								value={profile?.owner_full_name}
 							/>
-							{/* business_phone is only returned for own profile by backend */}
 							{profile?.business_phone && (
 								<InfoRow
 									label="Business Phone"
@@ -826,13 +809,11 @@ function PgOwnerProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 				</Card>
 			)}
 
-			{/* Email Verification */}
 			<EmailVerificationSection
 				isVerified={isEmailVerified}
 				refreshUser={refreshUser}
 			/>
 
-			{/* Sessions */}
 			<SessionsSection
 				sessions={sessions}
 				onSessionsChange={setSessions}

@@ -1,4 +1,5 @@
--- Active: 1774765370673@@127.0.0.1@5432@roomies_db
+-- Migration 002: Add verification event outbox pattern
+-- Creates outbox table for async notification processing on verification status changes
 DO $$
 BEGIN
     IF NOT EXISTS (

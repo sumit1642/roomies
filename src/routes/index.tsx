@@ -16,15 +16,15 @@ function LandingPage() {
 	return (
 		<div className="min-h-screen">
 			{/* Header */}
-			<header className="sticky top-0 z-50 border-b border-border/40 bg-[var(--header-bg)] backdrop-blur-md">
+			<header className="sticky top-0 z-50 border-b border-border/40 bg-(--header-bg) backdrop-blur-md">
 				<div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
 					<Link
 						to="/"
 						className="flex items-center gap-2">
-						<div className="flex size-9 items-center justify-center rounded-lg bg-[var(--lagoon)] text-white">
+						<div className="flex size-9 items-center justify-center rounded-lg bg-(--lagoon) text-white">
 							<Home className="size-5" />
 						</div>
-						<span className="text-xl font-bold text-[var(--sea-ink)]">Roomies</span>
+						<span className="text-xl font-bold text-(--sea-ink)">Roomies</span>
 					</Link>
 					<nav className="flex items-center gap-4">
 						{user ?
@@ -51,10 +51,10 @@ function LandingPage() {
 				<div className="mx-auto max-w-6xl px-4">
 					<div className="mx-auto max-w-3xl text-center">
 						<p className="island-kicker mb-4">Trusted by 10,000+ students</p>
-						<h1 className="display-title text-4xl font-bold tracking-tight text-[var(--sea-ink)] md:text-6xl">
-							Find Your Perfect <span className="text-[var(--lagoon-deep)]">PG or Roommate</span>
+						<h1 className="display-title text-4xl font-bold tracking-tight text-(--sea-ink) md:text-6xl">
+							Find Your Perfect <span className="text-(--lagoon-deep)">PG or Roommate</span>
 						</h1>
-						<p className="mt-6 text-lg text-[var(--sea-ink-soft)] md:text-xl">
+						<p className="mt-6 text-lg text-(--sea-ink-soft) md:text-xl">
 							India&apos;s trust-first platform for students to discover verified PGs, hostels, and
 							compatible roommates. Connect safely via WhatsApp.
 						</p>
@@ -89,8 +89,8 @@ function LandingPage() {
 			<section className="border-t border-border/40 py-20">
 				<div className="mx-auto max-w-6xl px-4">
 					<div className="mx-auto max-w-2xl text-center">
-						<h2 className="display-title text-3xl font-bold text-[var(--sea-ink)]">Why Choose Roomies?</h2>
-						<p className="mt-4 text-[var(--sea-ink-soft)]">Built for students, verified by trust</p>
+						<h2 className="display-title text-3xl font-bold text-(--sea-ink)">Why Choose Roomies?</h2>
+						<p className="mt-4 text-(--sea-ink-soft)">Built for students, verified by trust</p>
 					</div>
 					<div className="mt-12 grid gap-6 md:grid-cols-3">
 						<FeatureCard
@@ -116,7 +116,7 @@ function LandingPage() {
 			<section className="border-t border-border/40 py-20">
 				<div className="mx-auto max-w-6xl px-4">
 					<div className="mx-auto max-w-2xl text-center">
-						<h2 className="display-title text-3xl font-bold text-[var(--sea-ink)]">How It Works</h2>
+						<h2 className="display-title text-3xl font-bold text-(--sea-ink)">How It Works</h2>
 					</div>
 					<div className="mt-12 grid gap-8 md:grid-cols-4">
 						<StepCard
@@ -147,10 +147,10 @@ function LandingPage() {
 			<section className="border-t border-border/40 py-20">
 				<div className="mx-auto max-w-6xl px-4">
 					<div className="island-shell mx-auto max-w-2xl rounded-2xl p-8 text-center md:p-12">
-						<h2 className="display-title text-2xl font-bold text-[var(--sea-ink)] md:text-3xl">
+						<h2 className="display-title text-2xl font-bold text-(--sea-ink) md:text-3xl">
 							Ready to Find Your New Home?
 						</h2>
-						<p className="mt-4 text-[var(--sea-ink-soft)]">
+						<p className="mt-4 text-(--sea-ink-soft)">
 							Join thousands of students who found their perfect accommodation through Roomies.
 						</p>
 						<div className="mt-8 flex flex-col items-center justify-center gap-4 sm:flex-row">
@@ -179,12 +179,12 @@ function LandingPage() {
 				<div className="mx-auto max-w-6xl px-4">
 					<div className="flex flex-col items-center justify-between gap-4 md:flex-row">
 						<div className="flex items-center gap-2">
-							<div className="flex size-8 items-center justify-center rounded-lg bg-[var(--lagoon)] text-white">
+							<div className="flex size-8 items-center justify-center rounded-lg bg-(--lagoon) text-white">
 								<Home className="size-4" />
 							</div>
-							<span className="font-semibold text-[var(--sea-ink)]">Roomies</span>
+							<span className="font-semibold text-(--sea-ink)">Roomies</span>
 						</div>
-						<p className="text-sm text-[var(--sea-ink-soft)]">
+						<p className="text-sm text-(--sea-ink-soft)">
 							&copy; {new Date().getFullYear()} Roomies. Made for students, by students.
 						</p>
 					</div>
@@ -197,11 +197,11 @@ function LandingPage() {
 function FeatureCard({ icon: Icon, title, description }: { icon: typeof Shield; title: string; description: string }) {
 	return (
 		<div className="feature-card rounded-xl border border-border/40 p-6 transition-all">
-			<div className="mb-4 flex size-12 items-center justify-center rounded-lg bg-[var(--lagoon)]/10">
-				<Icon className="size-6 text-[var(--lagoon-deep)]" />
+			<div className="mb-4 flex size-12 items-center justify-center rounded-lg bg-(--lagoon)/10">
+				<Icon className="size-6 text-(--lagoon-deep)" />
 			</div>
-			<h3 className="text-lg font-semibold text-[var(--sea-ink)]">{title}</h3>
-			<p className="mt-2 text-sm text-[var(--sea-ink-soft)]">{description}</p>
+			<h3 className="text-lg font-semibold text-(--sea-ink)">{title}</h3>
+			<p className="mt-2 text-sm text-(--sea-ink-soft)">{description}</p>
 		</div>
 	);
 }
@@ -209,11 +209,11 @@ function FeatureCard({ icon: Icon, title, description }: { icon: typeof Shield; 
 function StepCard({ step, title, description }: { step: number; title: string; description: string }) {
 	return (
 		<div className="text-center">
-			<div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-[var(--lagoon)] text-lg font-bold text-white">
+			<div className="mx-auto mb-4 flex size-12 items-center justify-center rounded-full bg-(--lagoon) text-lg font-bold text-white">
 				{step}
 			</div>
-			<h3 className="font-semibold text-[var(--sea-ink)]">{title}</h3>
-			<p className="mt-1 text-sm text-[var(--sea-ink-soft)]">{description}</p>
+			<h3 className="font-semibold text-(--sea-ink)">{title}</h3>
+			<p className="mt-1 text-sm text-(--sea-ink-soft)">{description}</p>
 		</div>
 	);
 }

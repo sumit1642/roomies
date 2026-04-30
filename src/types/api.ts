@@ -1,6 +1,4 @@
-// src/types/api.ts — patch: extend PgOwnerProfile to include profile_photo_url
-// added by migration 003. This is the FULL updated api.ts.
-// (Only the PgOwnerProfile interface is changed; everything else identical)
+// src/types/api.ts — complete type definitions matching backend
 import type {
 	Role,
 	Gender,
@@ -18,7 +16,12 @@ import type {
 	NotificationType,
 	AmenityCategory,
 	PreferenceKey,
+	ReportReason,
+	ReportStatus,
+	DocumentType,
 } from "./enums";
+
+export type { DocumentType };
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export interface AuthUser {
@@ -514,6 +517,105 @@ export interface ListingFilters {
 	min_rent?: number;
 	max_rent?: number;
 	gender_preference?: Gender;
+}
+
+// ── Roommate Finder ──────────────────────────────────────────────────────────
+
+/**
+ * Matches backend GET /students/roommates feed items.
+ * All camelCase — explicit .map() in roommate.service.js
+ */
+export interface RoommateProfile {
+	userId: string;
+	fullName: string;
+	profilePhotoUrl: string | null;
+	course: string | null;
+	yearOfStudy: number | null;
+	gender: Gender | null;
+	bio: string | null;
+	isOptedIn: boolean;
+	/** Compatibility score 0–100, null if preferences unavailable */
+	compatibilityScore: number | null;
+	preferences: PreferencePair[];
+	averageRating: number;
+	ratingCount: number;
+	/** Whether current user has blocked this person */
+	isBlocked?: boolean;
+}
+
+export interface RoommateProfileUpdate {
+	isOptedIn?: boolean;
+}
+
+// ── Saved Searches ────────────────────────────────────────────────────────────
+
+/**
+ * Matches backend GET /saved-searches response items.
+ * All camelCase from savedSearch.service.js
+ */
+export interface SavedSearch {
+	searchId: string;
+	name: string;
+	/** Raw filter params stored as JSON */
+	filters: Record<string, unknown>;
+	alertEnabled: boolean;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface CreateSavedSearchInput {
+	name: string;
+	filters: Record<string, unknown>;
+	alertEnabled?: boolean;
+}
+
+export interface UpdateSavedSearchInput {
+	name?: string;
+	filters?: Record<string, unknown>;
+	alertEnabled?: boolean;
+}
+
+// ── Rent Index ────────────────────────────────────────────────────────────────
+
+/**
+ * Matches backend GET /rent-index response.
+ */
+export interface RentIndexData {
+	p25: number;
+	p50: number;
+	p75: number;
+	sampleCount: number;
+	/** Whether result was computed at locality or city level */
+	resolution: "locality" | "city";
+	city: string;
+	locality: string;
+	roomType: RoomType;
+}
+
+export interface RentIndexParams {
+	city: string;
+	locality: string;
+	roomType: RoomType;
+}
+
+// ── Reports ───────────────────────────────────────────────────────────────────
+
+/**
+ * Matches backend POST /ratings/:ratingId/report response.
+ */
+export interface Report {
+	reportId: string;
+	reporterId: string;
+	ratingId: string;
+	reason: ReportReason;
+	description: string | null;
+	status: ReportStatus;
+	createdAt: string;
+}
+
+export interface SubmitReportInput {
+	reason: ReportReason;
+	description?: string;
 }
 
 // ── Legacy compatibility types ────────────────────────────────────────────────

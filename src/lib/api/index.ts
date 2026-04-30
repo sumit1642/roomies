@@ -7,3 +7,6 @@ export * from "./properties";
 export * from "./profiles";
 export * from "./ratings";
 export * from "./amenities";
+export * from "./roommates";
+export * from "./savedSearches";
+export * from "./rentIndex";

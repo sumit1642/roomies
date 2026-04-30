@@ -16,6 +16,7 @@ import type {
 	Listing,
 	ListingFilters,
 	LegacyApiResponse,
+	PreferencePair,
 } from "#/types";
 
 export interface ListingSearchParams {
@@ -257,6 +258,22 @@ export async function saveListing(listingId: string): Promise<void> {
 
 export async function unsaveListing(listingId: string): Promise<void> {
 	await apiFetch<ApiMessage>(`/listings/${listingId}/save`, { method: "DELETE" });
+}
+
+export async function getListingPreferences(listingId: string): Promise<PreferencePair[]> {
+	const res = await apiFetch<ApiSuccess<PreferencePair[]>>(`/listings/${listingId}/preferences`);
+	return res.data;
+}
+
+export async function updateListingPreferences(
+	listingId: string,
+	preferences: PreferencePair[],
+): Promise<PreferencePair[]> {
+	const res = await apiFetch<ApiSuccess<PreferencePair[]>>(`/listings/${listingId}/preferences`, {
+		method: "PUT",
+		body: JSON.stringify({ preferences }),
+	});
+	return res.data;
 }
 
 function toLegacyListingFromSearch(item: ListingSearchItem): Listing {

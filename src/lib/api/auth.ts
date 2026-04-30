@@ -84,3 +84,19 @@ export async function verifyOtp(otp: string): Promise<void> {
 		body: JSON.stringify({ otp }),
 	});
 }
+
+/**
+ * POST /auth/google/callback
+ * Exchange a Google ID token for a Roomies session.
+ * The `idToken` is the credential returned by Google Sign-In.
+ */
+export async function googleCallback(idToken: string): Promise<AuthResponse> {
+	const res = await apiFetch<ApiSuccess<AuthResponse>>("/auth/google/callback", {
+		method: "POST",
+		body: JSON.stringify({ idToken }),
+	});
+	if (import.meta.env.PROD && res.data?.accessToken && res.data?.refreshToken) {
+		tokenStore.setTokens(res.data.accessToken, res.data.refreshToken);
+	}
+	return res.data;
+}

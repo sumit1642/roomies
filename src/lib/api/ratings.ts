@@ -10,6 +10,8 @@ import type {
 	Cursor,
 	LegacyApiResponse,
 	SubmitRatingResponse,
+	Report,
+	SubmitReportInput,
 } from "#/types";
 
 // Get ratings for a connection (both parties' ratings)
@@ -87,6 +89,19 @@ export interface SubmitRatingInput {
 
 export async function submitRating(data: SubmitRatingInput): Promise<SubmitRatingResponse> {
 	const res = await apiFetch<ApiSuccess<SubmitRatingResponse>>("/ratings", {
+		method: "POST",
+		body: JSON.stringify(data),
+	});
+	return res.data;
+}
+
+/**
+ * POST /ratings/:ratingId/report
+ * Report a rating as fake, abusive, or a conflict of interest.
+ * Returns the newly created Report record.
+ */
+export async function reportRating(ratingId: string, data: SubmitReportInput): Promise<Report> {
+	const res = await apiFetch<ApiSuccess<Report>>(`/ratings/${ratingId}/report`, {
 		method: "POST",
 		body: JSON.stringify(data),
 	});

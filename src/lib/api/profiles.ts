@@ -77,6 +77,10 @@ export async function uploadPgOwnerPhoto(userId: string, file: File): Promise<{ 
 	return uploadPhotoMultipart(`/pg-owners/${userId}/photo`, file);
 }
 
+export async function deletePgOwnerPhoto(userId: string): Promise<void> {
+	await apiFetch<ApiSuccess<{ profilePhotoUrl: null }>>(`/pg-owners/${userId}/photo`, { method: "DELETE" });
+}
+
 export async function getPreferencesMeta(): Promise<PreferenceMetaItem[]> {
 	const res = await apiFetch<ApiSuccess<{ preferences: PreferenceMetaItem[] }>>("/preferences/meta");
 	return res.data.preferences;

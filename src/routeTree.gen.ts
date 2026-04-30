@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AuthSessionsRouteImport } from './routes/_auth/sessions'
 import { Route as AuthProfileRouteImport } from './routes/_auth/profile'
 import { Route as AuthNotificationsRouteImport } from './routes/_auth/notifications'
 import { Route as AuthDashboardRouteImport } from './routes/_auth/dashboard'
@@ -23,6 +24,7 @@ import { Route as AuthStudentRouteImport } from './routes/_auth/_student'
 import { Route as AuthPgownerRouteImport } from './routes/_auth/_pgowner'
 import { Route as AuthListingIdRouteImport } from './routes/_auth/listing.$id'
 import { Route as AuthStudentSavedRouteImport } from './routes/_auth/_student/saved'
+import { Route as AuthStudentRoommatesRouteImport } from './routes/_auth/_student/roommates'
 import { Route as AuthStudentPreferencesRouteImport } from './routes/_auth/_student/preferences'
 import { Route as AuthStudentInterestsRouteImport } from './routes/_auth/_student/interests'
 import { Route as AuthPgownerPropertiesRouteImport } from './routes/_auth/_pgowner/properties'
@@ -51,6 +53,11 @@ const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthSessionsRoute = AuthSessionsRouteImport.update({
+  id: '/sessions',
+  path: '/sessions',
+  getParentRoute: () => AuthRoute,
 } as any)
 const AuthProfileRoute = AuthProfileRouteImport.update({
   id: '/profile',
@@ -95,6 +102,11 @@ const AuthStudentSavedRoute = AuthStudentSavedRouteImport.update({
   path: '/saved',
   getParentRoute: () => AuthStudentRoute,
 } as any)
+const AuthStudentRoommatesRoute = AuthStudentRoommatesRouteImport.update({
+  id: '/roommates',
+  path: '/roommates',
+  getParentRoute: () => AuthStudentRoute,
+} as any)
 const AuthStudentPreferencesRoute = AuthStudentPreferencesRouteImport.update({
   id: '/preferences',
   path: '/preferences',
@@ -126,10 +138,12 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AuthDashboardRoute
   '/notifications': typeof AuthNotificationsRoute
   '/profile': typeof AuthProfileRoute
+  '/sessions': typeof AuthSessionsRoute
   '/listings': typeof AuthPgownerListingsRoute
   '/properties': typeof AuthPgownerPropertiesRoute
   '/interests': typeof AuthStudentInterestsRoute
   '/preferences': typeof AuthStudentPreferencesRoute
+  '/roommates': typeof AuthStudentRoommatesRoute
   '/saved': typeof AuthStudentSavedRoute
   '/listing/$id': typeof AuthListingIdRoute
 }
@@ -143,10 +157,12 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AuthDashboardRoute
   '/notifications': typeof AuthNotificationsRoute
   '/profile': typeof AuthProfileRoute
+  '/sessions': typeof AuthSessionsRoute
   '/listings': typeof AuthPgownerListingsRoute
   '/properties': typeof AuthPgownerPropertiesRoute
   '/interests': typeof AuthStudentInterestsRoute
   '/preferences': typeof AuthStudentPreferencesRoute
+  '/roommates': typeof AuthStudentRoommatesRoute
   '/saved': typeof AuthStudentSavedRoute
   '/listing/$id': typeof AuthListingIdRoute
 }
@@ -164,10 +180,12 @@ export interface FileRoutesById {
   '/_auth/dashboard': typeof AuthDashboardRoute
   '/_auth/notifications': typeof AuthNotificationsRoute
   '/_auth/profile': typeof AuthProfileRoute
+  '/_auth/sessions': typeof AuthSessionsRoute
   '/_auth/_pgowner/listings': typeof AuthPgownerListingsRoute
   '/_auth/_pgowner/properties': typeof AuthPgownerPropertiesRoute
   '/_auth/_student/interests': typeof AuthStudentInterestsRoute
   '/_auth/_student/preferences': typeof AuthStudentPreferencesRoute
+  '/_auth/_student/roommates': typeof AuthStudentRoommatesRoute
   '/_auth/_student/saved': typeof AuthStudentSavedRoute
   '/_auth/listing/$id': typeof AuthListingIdRoute
 }
@@ -183,10 +201,12 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/notifications'
     | '/profile'
+    | '/sessions'
     | '/listings'
     | '/properties'
     | '/interests'
     | '/preferences'
+    | '/roommates'
     | '/saved'
     | '/listing/$id'
   fileRoutesByTo: FileRoutesByTo
@@ -200,10 +220,12 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/notifications'
     | '/profile'
+    | '/sessions'
     | '/listings'
     | '/properties'
     | '/interests'
     | '/preferences'
+    | '/roommates'
     | '/saved'
     | '/listing/$id'
   id:
@@ -220,10 +242,12 @@ export interface FileRouteTypes {
     | '/_auth/dashboard'
     | '/_auth/notifications'
     | '/_auth/profile'
+    | '/_auth/sessions'
     | '/_auth/_pgowner/listings'
     | '/_auth/_pgowner/properties'
     | '/_auth/_student/interests'
     | '/_auth/_student/preferences'
+    | '/_auth/_student/roommates'
     | '/_auth/_student/saved'
     | '/_auth/listing/$id'
   fileRoutesById: FileRoutesById
@@ -272,6 +296,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_auth/sessions': {
+      id: '/_auth/sessions'
+      path: '/sessions'
+      fullPath: '/sessions'
+      preLoaderRoute: typeof AuthSessionsRouteImport
+      parentRoute: typeof AuthRoute
     }
     '/_auth/profile': {
       id: '/_auth/profile'
@@ -336,6 +367,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthStudentSavedRouteImport
       parentRoute: typeof AuthStudentRoute
     }
+    '/_auth/_student/roommates': {
+      id: '/_auth/_student/roommates'
+      path: '/roommates'
+      fullPath: '/roommates'
+      preLoaderRoute: typeof AuthStudentRoommatesRouteImport
+      parentRoute: typeof AuthStudentRoute
+    }
     '/_auth/_student/preferences': {
       id: '/_auth/_student/preferences'
       path: '/preferences'
@@ -384,12 +422,14 @@ const AuthPgownerRouteWithChildren = AuthPgownerRoute._addFileChildren(
 interface AuthStudentRouteChildren {
   AuthStudentInterestsRoute: typeof AuthStudentInterestsRoute
   AuthStudentPreferencesRoute: typeof AuthStudentPreferencesRoute
+  AuthStudentRoommatesRoute: typeof AuthStudentRoommatesRoute
   AuthStudentSavedRoute: typeof AuthStudentSavedRoute
 }
 
 const AuthStudentRouteChildren: AuthStudentRouteChildren = {
   AuthStudentInterestsRoute: AuthStudentInterestsRoute,
   AuthStudentPreferencesRoute: AuthStudentPreferencesRoute,
+  AuthStudentRoommatesRoute: AuthStudentRoommatesRoute,
   AuthStudentSavedRoute: AuthStudentSavedRoute,
 }
 
@@ -405,6 +445,7 @@ interface AuthRouteChildren {
   AuthDashboardRoute: typeof AuthDashboardRoute
   AuthNotificationsRoute: typeof AuthNotificationsRoute
   AuthProfileRoute: typeof AuthProfileRoute
+  AuthSessionsRoute: typeof AuthSessionsRoute
   AuthListingIdRoute: typeof AuthListingIdRoute
 }
 
@@ -416,6 +457,7 @@ const AuthRouteChildren: AuthRouteChildren = {
   AuthDashboardRoute: AuthDashboardRoute,
   AuthNotificationsRoute: AuthNotificationsRoute,
   AuthProfileRoute: AuthProfileRoute,
+  AuthSessionsRoute: AuthSessionsRoute,
   AuthListingIdRoute: AuthListingIdRoute,
 }
 

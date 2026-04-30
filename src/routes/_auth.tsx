@@ -1,6 +1,6 @@
 // src/routes/_auth.tsx
 import { createFileRoute, Outlet, Link, useNavigate, useLocation } from "@tanstack/react-router";
-import { Home, Search, Heart, Users, Bookmark, User, Building2, Menu, LogOut, ChevronDown } from "lucide-react";
+import { Home, Search, Heart, Users, Bookmark, User, Building2, Menu, LogOut, ChevronDown, UserSearch, ShieldCheck } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "#/components/ui/button";
 import {
@@ -58,6 +58,7 @@ function AuthLayout() {
 		{ href: "/interests", icon: Heart, label: "My Interests" },
 		{ href: "/connections", icon: Users, label: "Connections" },
 		{ href: "/saved", icon: Bookmark, label: "Saved" },
+		{ href: "/roommates", icon: UserSearch, label: "Find Roommates" },
 	];
 
 	const pgOwnerNavItems = [
@@ -143,6 +144,14 @@ function AuthLayout() {
 										</Link>
 									</DropdownMenuItem>
 								)}
+								<DropdownMenuItem asChild>
+									<Link
+										to="/sessions"
+										className="cursor-pointer">
+										<ShieldCheck className="size-4 mr-2" />
+										Sessions
+									</Link>
+								</DropdownMenuItem>
 								<DropdownMenuSeparator />
 								<DropdownMenuItem
 									onClick={handleLogout}

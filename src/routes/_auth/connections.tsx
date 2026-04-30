@@ -1,6 +1,9 @@
 // src/routes/_auth/connections.tsx
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "#/lib/queryKeys";
+import { STALE } from "#/lib/queryClient";
 import { Button } from "#/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "#/components/ui/card";
 import { Badge } from "#/components/ui/badge";
@@ -803,15 +806,12 @@ function ConnectionDetailView({
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 function ConnectionsPage() {
 	const { user, role } = useAuth();
-	const [connections, setConnections] = useState<ConnectionListItem[]>([]);
-	const [isLoading, setIsLoading] = useState(true);
+	const qc = useQueryClient();
 	const [activeTab, setActiveTab] = useState<TabFilter>("all");
 	const [processingId, setProcessingId] = useState<string | null>(null);
 
 	// Detail dialog
 	const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null);
-	const [connectionDetail, setConnectionDetail] = useState<ConnectionDetail | null>(null);
-	const [isLoadingDetail, setIsLoadingDetail] = useState(false);
 	const [detailOpen, setDetailOpen] = useState(false);
 
 	// Student profile modal (owner-only)
@@ -826,53 +826,40 @@ function ConnectionsPage() {
 
 	const isOwner = role === "pg_owner";
 
-	const fetchConnections = useCallback(async () => {
-		try {
-			setIsLoading(true);
-			const response = await getMyConnections();
-			setConnections(response.items);
-		} catch {
-			toast.error("Failed to load connections");
-		} finally {
-			setIsLoading(false);
-		}
-	}, []);
+	// ── Connections list ────────────────────────────────────────────────────
+	const { data: connectionsData, isLoading } = useQuery({
+		queryKey: queryKeys.connections(),
+		queryFn: () => getMyConnections(),
+		staleTime: STALE.TRANSACTIONAL,
+	});
+	const connections: ConnectionListItem[] = connectionsData?.items ?? [];
 
-	useEffect(() => {
-		fetchConnections();
-	}, [fetchConnections]);
+	// ── Connection detail ───────────────────────────────────────────────────
+	const { data: connectionDetail, isLoading: isLoadingDetail } = useQuery({
+		queryKey: queryKeys.connection(selectedConnectionId ?? ""),
+		queryFn: () => getConnection(selectedConnectionId!),
+		enabled: !!selectedConnectionId && detailOpen,
+		staleTime: STALE.TRANSACTIONAL,
+	});
 
-	const handleConfirmConnection = async (connectionId: string) => {
-		setProcessingId(connectionId);
-		try {
-			await confirmConnection(connectionId);
+	// ── Confirm connection mutation ──────────────────────────────────────────
+	const confirmMutation = useMutation({
+		mutationFn: (connectionId: string) => confirmConnection(connectionId),
+		onMutate: (connectionId) => setProcessingId(connectionId),
+		onSuccess: (_data, connectionId) => {
 			toast.success("Connection confirmed from your side!");
-			fetchConnections();
-			// Refresh detail if open
-			if (selectedConnectionId === connectionId) {
-				const updated = await getConnection(connectionId);
-				setConnectionDetail(updated);
-			}
-		} catch {
-			toast.error("Failed to confirm connection");
-		} finally {
-			setProcessingId(null);
-		}
-	};
+			qc.invalidateQueries({ queryKey: queryKeys.connections() });
+			qc.invalidateQueries({ queryKey: queryKeys.connection(connectionId) });
+		},
+		onError: () => toast.error("Failed to confirm connection"),
+		onSettled: () => setProcessingId(null),
+	});
 
-	const handleOpenDetail = async (connectionId: string) => {
+	const handleConfirmConnection = (connectionId: string) => confirmMutation.mutate(connectionId);
+
+	const handleOpenDetail = (connectionId: string) => {
 		setSelectedConnectionId(connectionId);
 		setDetailOpen(true);
-		setIsLoadingDetail(true);
-		setConnectionDetail(null);
-		try {
-			const detail = await getConnection(connectionId);
-			setConnectionDetail(detail);
-		} catch {
-			toast.error("Failed to load connection details");
-		} finally {
-			setIsLoadingDetail(false);
-		}
 	};
 
 	const handleOpenStudentProfile = (studentId: string, connectionId: string) => {
@@ -967,7 +954,6 @@ function ConnectionsPage() {
 					if (!open) {
 						setDetailOpen(false);
 						setSelectedConnectionId(null);
-						setConnectionDetail(null);
 					}
 				}}>
 				<DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">

@@ -1,6 +1,7 @@
 // src/routes/_auth/browse.tsx
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { Button } from "#/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "#/components/ui/card";
 import { Badge } from "#/components/ui/badge";
@@ -11,6 +12,8 @@ import { EmptyState } from "#/components/EmptyState";
 import { StarRating } from "#/components/StarRating";
 import { searchListings, saveListing, unsaveListing, getSavedListings } from "#/lib/api/listings";
 import { formatCurrency } from "#/lib/format";
+import { queryKeys } from "#/lib/queryKeys";
+import { STALE } from "#/lib/queryClient";
 import type { ListingSearchItem, ListingFilters } from "#/types";
 import { RoomType } from "#/types/enums";
 import { toast } from "#/components/ui/sonner";
@@ -51,8 +54,7 @@ function CompatibilityBadge({ score, available }: { score: number; available: bo
 		:	"text-slate-600 bg-slate-50 border-slate-200 dark:text-slate-400 dark:bg-slate-900 dark:border-slate-700";
 
 	return (
-		<div
-			className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border", color)}>
+		<div className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border", color)}>
 			<Zap className="size-3" />
 			{score}/{7} match
 		</div>
@@ -62,17 +64,11 @@ function CompatibilityBadge({ score, available }: { score: number; available: bo
 function BrowseListingsPage() {
 	const searchParams = Route.useSearch();
 	const { role, isEmailVerified } = useAuth();
+	const qc = useQueryClient();
 	const isStudent = role === "student";
 
-	const [listings, setListings] = useState<ListingSearchItem[]>([]);
-	const [isLoading, setIsLoading] = useState(true);
-	const [isLoadingMore, setIsLoadingMore] = useState(false);
-	const [nextCursor, setNextCursor] = useState<Cursor | null>(null);
 	const [showFilters, setShowFilters] = useState(false);
-	// Track saved listing IDs (loaded from backend on mount for students)
-	const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
 	const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
-	const [savedLoaded, setSavedLoaded] = useState(false);
 
 	const [filters, setFilters] = useState<ListingFilters>({
 		city: searchParams.city || "",
@@ -84,55 +80,92 @@ function BrowseListingsPage() {
 
 	const [tempFilters, setTempFilters] = useState<ListingFilters>(filters);
 
-	// Load saved listings once for students
-	useEffect(() => {
-		if (!isStudent || savedLoaded) return;
-		getSavedListings()
-			.then((res) => {
-				setSavedIds(new Set(res.items.map((l) => l.listing_id)));
-				setSavedLoaded(true);
-			})
-			.catch(() => {
-				setSavedLoaded(true);
-			});
-	}, [isStudent, savedLoaded]);
+	// ── Saved listings (shared cache with dashboard) ──────────────────────────
+	const { data: savedData } = useQuery({
+		queryKey: queryKeys.savedListings(),
+		queryFn: () => getSavedListings(),
+		staleTime: STALE.FEED,
+		enabled: isStudent,
+	});
+	const savedIds = new Set((savedData?.items ?? []).map((l) => l.listing_id));
 
-	const fetchListings = useCallback(async (activeFilters: ListingFilters, cursor?: Cursor, append = false) => {
-		try {
-			if (!append) setIsLoading(true);
-			else setIsLoadingMore(true);
+	// ── Listings feed — infinite query for cursor-based pagination ────────────
+	const activeFiltersKey = {
+		city: filters.city || undefined,
+		roomType: filters.room_type,
+		minRent: filters.min_rent,
+		maxRent: filters.max_rent,
+		preferredGender: filters.gender_preference,
+	};
 
-			const res = await searchListings({
-				city: activeFilters.city || undefined,
-				roomType: activeFilters.room_type,
-				minRent: activeFilters.min_rent,
-				maxRent: activeFilters.max_rent,
-				preferredGender: activeFilters.gender_preference,
+	const {
+		data: listingsPages,
+		isLoading,
+		isFetchingNextPage,
+		fetchNextPage,
+		hasNextPage,
+	} = useInfiniteQuery({
+		queryKey: queryKeys.listings(activeFiltersKey),
+		queryFn: async ({ pageParam }: { pageParam: Cursor | undefined }) => {
+			return searchListings({
+				...activeFiltersKey,
 				limit: 20,
-				cursorTime: cursor?.cursorTime,
-				cursorId: cursor?.cursorId,
+				cursorTime: pageParam?.cursorTime,
+				cursorId: pageParam?.cursorId,
 			});
+		},
+		initialPageParam: undefined as Cursor | undefined,
+		getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+		staleTime: STALE.FEED,
+	});
 
-			if (append) {
-				setListings((prev) => [...prev, ...res.items]);
+	const listings: ListingSearchItem[] = listingsPages?.pages.flatMap((p) => p.items) ?? [];
+	const nextCursor = listingsPages?.pages.at(-1)?.nextCursor ?? null;
+
+	// ── Save / unsave mutation ────────────────────────────────────────────────
+	const saveUnsaveMutation = useMutation({
+		mutationFn: async ({ listingId, isSaved }: { listingId: string; isSaved: boolean }) => {
+			if (isSaved) {
+				await unsaveListing(listingId);
 			} else {
-				setListings(res.items);
+				await saveListing(listingId);
 			}
-			setNextCursor(res.nextCursor);
-		} catch {
-			toast.error("Failed to load listings");
-		} finally {
-			setIsLoading(false);
-			setIsLoadingMore(false);
+		},
+		onMutate: ({ listingId }) => {
+			setSavingIds((prev) => new Set(prev).add(listingId));
+		},
+		onSuccess: (_data, { isSaved }) => {
+			// Invalidate savedListings so dashboard count also updates
+			qc.invalidateQueries({ queryKey: queryKeys.savedListings() });
+			toast.success(isSaved ? "Removed from saved" : "Saved to favourites");
+		},
+		onError: (err) => {
+			if (err instanceof ApiClientError && err.status === 422) {
+				toast.error("This listing is no longer available");
+			} else {
+				toast.error("Failed to update saved status");
+			}
+		},
+		onSettled: (_data, _err, { listingId }) => {
+			setSavingIds((prev) => {
+				const next = new Set(prev);
+				next.delete(listingId);
+				return next;
+			});
+		},
+	});
+
+	const handleToggleSave = (e: React.MouseEvent, listingId: string) => {
+		e.preventDefault();
+		e.stopPropagation();
+		if (savingIds.has(listingId)) return;
+
+		if (!isEmailVerified) {
+			toast.error("Please verify your email to save listings");
+			return;
 		}
-	}, []);
 
-	useEffect(() => {
-		fetchListings(filters);
-	}, [filters, fetchListings]);
-
-	const handleLoadMore = () => {
-		if (nextCursor) fetchListings(filters, nextCursor, true);
+		saveUnsaveMutation.mutate({ listingId, isSaved: savedIds.has(listingId) });
 	};
 
 	const handleApplyFilters = () => {
@@ -147,44 +180,9 @@ function BrowseListingsPage() {
 		setShowFilters(false);
 	};
 
-	const handleToggleSave = async (e: React.MouseEvent, listingId: string) => {
-		e.preventDefault();
-		e.stopPropagation();
-		if (savingIds.has(listingId)) return;
-
-		// Require email verification to save
-		if (!isEmailVerified) {
-			toast.error("Please verify your email to save listings");
-			return;
-		}
-
-		setSavingIds((prev) => new Set(prev).add(listingId));
-		try {
-			if (savedIds.has(listingId)) {
-				await unsaveListing(listingId);
-				setSavedIds((prev) => {
-					const next = new Set(prev);
-					next.delete(listingId);
-					return next;
-				});
-				toast.success("Removed from saved");
-			} else {
-				await saveListing(listingId);
-				setSavedIds((prev) => new Set(prev).add(listingId));
-				toast.success("Saved to favourites");
-			}
-		} catch (err) {
-			if (err instanceof ApiClientError && err.status === 422) {
-				toast.error("This listing is no longer available");
-			} else {
-				toast.error("Failed to update saved status");
-			}
-		} finally {
-			setSavingIds((prev) => {
-				const next = new Set(prev);
-				next.delete(listingId);
-				return next;
-			});
+	const handleLoadMore = () => {
+		if (hasNextPage && !isFetchingNextPage) {
+			fetchNextPage();
 		}
 	};
 
@@ -248,8 +246,7 @@ function BrowseListingsPage() {
 									onValueChange={(value) =>
 										setTempFilters((prev) => ({
 											...prev,
-											room_type:
-												value === "all" ? undefined : (value as ListingFilters["room_type"]),
+											room_type: value === "all" ? undefined : (value as ListingFilters["room_type"]),
 										}))
 									}>
 									<SelectTrigger>
@@ -273,9 +270,7 @@ function BrowseListingsPage() {
 										setTempFilters((prev) => ({
 											...prev,
 											gender_preference:
-												value === "all" ? undefined : (
-													(value as ListingFilters["gender_preference"])
-												),
+												value === "all" ? undefined : (value as ListingFilters["gender_preference"]),
 										}))
 									}>
 									<SelectTrigger>
@@ -385,9 +380,7 @@ function BrowseListingsPage() {
 													<Loader2 className="size-4 animate-spin" />
 												:	<Heart
 														className="size-4"
-														fill={
-															savedIds.has(listing.listing_id) ? "currentColor" : "none"
-														}
+														fill={savedIds.has(listing.listing_id) ? "currentColor" : "none"}
 													/>
 												}
 											</button>
@@ -424,15 +417,9 @@ function BrowseListingsPage() {
 													<Loader2 className="size-4 animate-spin" />
 												:	<Heart
 														className="size-4"
-														fill={
-															savedIds.has(listing.listing_id) ? "currentColor" : "none"
-														}
+														fill={savedIds.has(listing.listing_id) ? "currentColor" : "none"}
 														strokeWidth={savedIds.has(listing.listing_id) ? 0 : 2}
-														color={
-															savedIds.has(listing.listing_id) ? "var(--destructive)" : (
-																"currentColor"
-															)
-														}
+														color={savedIds.has(listing.listing_id) ? "var(--destructive)" : "currentColor"}
 													/>
 												}
 											</Button>
@@ -484,9 +471,7 @@ function BrowseListingsPage() {
 										<div className="flex items-center text-primary font-bold">
 											<IndianRupee className="h-3.5 w-3.5" />
 											{formatCurrency(listing.rentPerMonth)}
-											<span className="text-xs font-normal text-muted-foreground ml-0.5">
-												/mo
-											</span>
+											<span className="text-xs font-normal text-muted-foreground ml-0.5">/mo</span>
 										</div>
 										<Link
 											to="/listing/$id"
@@ -508,8 +493,8 @@ function BrowseListingsPage() {
 							<Button
 								variant="outline"
 								onClick={handleLoadMore}
-								disabled={isLoadingMore}>
-								{isLoadingMore ?
+								disabled={isFetchingNextPage}>
+								{isFetchingNextPage ?
 									<>
 										<Loader2 className="size-4 animate-spin mr-2" />
 										Loading...

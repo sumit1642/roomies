@@ -1,28 +1,21 @@
-import { useEffect, useState, useCallback } from "react";
 import { Bell } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "#/components/ui/button";
 import { getUnreadCount } from "#/lib/api/notifications";
+import { queryKeys } from "#/lib/queryKeys";
+import { STALE } from "#/lib/queryClient";
 
 export function NotificationBell() {
-	const [unreadCount, setUnreadCount] = useState(0);
-
-	const fetchUnreadCount = useCallback(async () => {
-		try {
-			const count = await getUnreadCount();
-			setUnreadCount(count);
-		} catch {
-			// Silently fail - notifications not critical
-		}
-	}, []);
-
-	useEffect(() => {
-		fetchUnreadCount();
-
-		// Poll every 60 seconds
-		const interval = setInterval(fetchUnreadCount, 60000);
-		return () => clearInterval(interval);
-	}, [fetchUnreadCount]);
+	const { data: unreadCount = 0 } = useQuery({
+		queryKey: queryKeys.notifications.unreadCount(),
+		queryFn: getUnreadCount,
+		staleTime: STALE.NOTIFICATION,
+		// Still polls every 60 s — but now deduplicated + cached.
+		// refetchIntervalInBackground: false → stops polling in unfocused tabs (key improvement).
+		refetchInterval: 60_000,
+		refetchIntervalInBackground: false,
+	});
 
 	return (
 		<Button

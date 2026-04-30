@@ -1,6 +1,7 @@
 // src/routes/_auth/sessions.tsx
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Monitor, ShieldCheck, Trash2, LogOut, Clock, AlertCircle } from "lucide-react";
 import { Button } from "#/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "#/components/ui/card";
@@ -9,6 +10,8 @@ import { ConfirmDialog } from "#/components/ConfirmDialog";
 import { toast } from "#/components/ui/sonner";
 import { getSessions, revokeSession, logoutAll } from "#/lib/api/auth";
 import { useAuth } from "#/context/AuthContext";
+import { queryKeys } from "#/lib/queryKeys";
+import { STALE } from "#/lib/queryClient";
 import { formatDistanceToNow, format } from "date-fns";
 import type { SessionItem } from "#/types";
 
@@ -21,47 +24,49 @@ export const Route = createFileRoute("/_auth/sessions")({
 
 function SessionsPage() {
 	const { logout } = useAuth();
-	const [sessions, setSessions] = useState<SessionItem[]>([]);
-	const [isLoading, setIsLoading] = useState(true);
-	const [revokingId, setRevokingId] = useState<string | null>(null);
+	const qc = useQueryClient();
 	const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
 	const [confirmLogoutAll, setConfirmLogoutAll] = useState(false);
 
-	useEffect(() => {
-		getSessions()
-			.then(setSessions)
-			.catch(() => toast.error("Failed to load sessions"))
-			.finally(() => setIsLoading(false));
-	}, []);
+	// ── Fetch sessions ────────────────────────────────────────────────────────
+	const { data: sessions = [], isLoading } = useQuery({
+		queryKey: queryKeys.sessions(),
+		queryFn: getSessions,
+		staleTime: STALE.SESSIONS,
+	});
 
-	const handleRevoke = async (sid: string) => {
-		setRevokingId(sid);
-		try {
-			await revokeSession(sid);
-			setSessions((prev) => prev.filter((s) => s.sid !== sid));
+	// ── Revoke single session ─────────────────────────────────────────────────
+	const revokeMutation = useMutation({
+		mutationFn: (sid: string) => revokeSession(sid),
+		onSuccess: (_data, sid) => {
+			// Optimistic removal — no refetch needed
+			qc.setQueryData(queryKeys.sessions(), (old: SessionItem[] | undefined) =>
+				old ? old.filter((s) => s.sid !== sid) : [],
+			);
 			toast.success("Session revoked successfully.");
-		} catch {
-			toast.error("Failed to revoke session.");
-		} finally {
-			setRevokingId(null);
 			setConfirmRevoke(null);
-		}
-	};
+		},
+		onError: () => {
+			toast.error("Failed to revoke session.");
+		},
+	});
 
-	const handleLogoutAll = async () => {
-		try {
-			await logoutAll();
+	// ── Logout all sessions ───────────────────────────────────────────────────
+	const logoutAllMutation = useMutation({
+		mutationFn: logoutAll,
+		onSuccess: async () => {
 			await logout();
 			toast.success("Logged out from all sessions.");
-		} catch {
+		},
+		onError: () => {
 			toast.error("Failed to log out from all sessions.");
-		} finally {
-			setConfirmLogoutAll(false);
-		}
-	};
+		},
+		onSettled: () => setConfirmLogoutAll(false),
+	});
 
 	const currentSession = sessions.find((s) => s.isCurrent);
 	const otherSessions = sessions.filter((s) => !s.isCurrent);
+	const isRevoking = revokeMutation.isPending;
 
 	return (
 		<div className="mx-auto max-w-3xl px-4 py-8">
@@ -129,7 +134,7 @@ function SessionsPage() {
 										key={session.sid}
 										session={session}
 										onRevoke={() => setConfirmRevoke(session.sid)}
-										isRevoking={revokingId === session.sid}
+										isRevoking={isRevoking && confirmRevoke === session.sid}
 									/>
 								))}
 							</div>
@@ -159,7 +164,7 @@ function SessionsPage() {
 				title="Revoke this session?"
 				description="The device using this session will be logged out immediately."
 				confirmLabel="Revoke"
-				onConfirm={() => confirmRevoke && handleRevoke(confirmRevoke)}
+				onConfirm={() => confirmRevoke && revokeMutation.mutate(confirmRevoke)}
 				variant="destructive"
 			/>
 
@@ -170,7 +175,7 @@ function SessionsPage() {
 				title="Logout from all devices?"
 				description="You will be logged out from every device, including this one. You'll need to log in again."
 				confirmLabel="Logout All"
-				onConfirm={handleLogoutAll}
+				onConfirm={() => logoutAllMutation.mutate()}
 				variant="destructive"
 			/>
 		</div>

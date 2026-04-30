@@ -1,6 +1,6 @@
 // src/routes/_auth/dashboard.tsx
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
 	Heart,
 	Users,
@@ -24,6 +24,8 @@ import { getMyConnections } from "#/lib/api/connections";
 import { getSavedListings } from "#/lib/api/listings";
 import { getMyProperties } from "#/lib/api/properties";
 import { getStudentProfile, getPgOwnerProfile } from "#/lib/api/profiles";
+import { queryKeys } from "#/lib/queryKeys";
+import { STALE } from "#/lib/queryClient";
 import type { Notification, StudentProfile, PgOwnerProfile } from "#/types";
 import { formatDistanceToNow } from "date-fns";
 import { StarRating } from "#/components/StarRating";
@@ -53,45 +55,48 @@ function DashboardPage() {
 }
 
 function StudentDashboard({ userId, isEmailVerified }: { userId: string; isEmailVerified: boolean }) {
-	const [profile, setProfile] = useState<StudentProfile | null>(null);
-	const [pendingInterests, setPendingInterests] = useState(0);
-	const [acceptedInterests, setAcceptedInterests] = useState(0);
-	const [confirmedConnections, setConfirmedConnections] = useState(0);
-	const [savedCount, setSavedCount] = useState(0);
-	const [recentNotifications, setRecentNotifications] = useState<Notification[]>([]);
-	const [isLoading, setIsLoading] = useState(true);
+	const { data: profile } = useQuery({
+		queryKey: queryKeys.studentProfile(userId),
+		queryFn: () => getStudentProfile(userId),
+		staleTime: STALE.PROFILE,
+	});
 
-	useEffect(() => {
-		if (!userId) return;
-		let cancelled = false;
-		async function fetchData() {
-			try {
-				const [profileData, interests, acceptedRes, connections, saved, notifications] = await Promise.all([
-					getStudentProfile(userId),
-					getMyInterests("pending"),
-					getMyInterests("accepted"),
-					getMyConnections("confirmed"),
-					getSavedListings(),
-					getNotifications(false),
-				]);
-				if (cancelled) return;
-				setProfile(profileData);
-				setPendingInterests(interests.items.length);
-				setAcceptedInterests(acceptedRes.items.length);
-				setConfirmedConnections(connections.items.length);
-				setSavedCount(saved.items.length);
-				setRecentNotifications(notifications.items.slice(0, 4));
-			} catch {
-				// Silently handle
-			} finally {
-				if (!cancelled) setIsLoading(false);
-			}
-		}
-		fetchData();
-		return () => {
-			cancelled = true;
-		};
-	}, [userId]);
+	const { data: pendingInterestsData, isLoading: loadingPending } = useQuery({
+		queryKey: queryKeys.interests("pending"),
+		queryFn: () => getMyInterests("pending"),
+		staleTime: STALE.TRANSACTIONAL,
+	});
+
+	const { data: acceptedInterestsData, isLoading: loadingAccepted } = useQuery({
+		queryKey: queryKeys.interests("accepted"),
+		queryFn: () => getMyInterests("accepted"),
+		staleTime: STALE.TRANSACTIONAL,
+	});
+
+	const { data: connectionsData, isLoading: loadingConnections } = useQuery({
+		queryKey: queryKeys.connections("confirmed"),
+		queryFn: () => getMyConnections("confirmed"),
+		staleTime: STALE.TRANSACTIONAL,
+	});
+
+	const { data: savedData, isLoading: loadingSaved } = useQuery({
+		queryKey: queryKeys.savedListings(),
+		queryFn: () => getSavedListings(),
+		staleTime: STALE.FEED,
+	});
+
+	const { data: notificationsData } = useQuery({
+		queryKey: queryKeys.notifications.list(false),
+		queryFn: () => getNotifications(false),
+		staleTime: STALE.NOTIFICATION,
+	});
+
+	const isLoading = loadingPending || loadingAccepted || loadingConnections || loadingSaved;
+	const pendingInterests = pendingInterestsData?.items.length ?? 0;
+	const acceptedInterests = acceptedInterestsData?.items.length ?? 0;
+	const confirmedConnections = connectionsData?.items.length ?? 0;
+	const savedCount = savedData?.items.length ?? 0;
+	const recentNotifications = (notificationsData?.items ?? []).slice(0, 4) as Notification[];
 
 	return (
 		<div className="mx-auto max-w-6xl px-4 py-8 space-y-6">
@@ -180,7 +185,7 @@ function StudentDashboard({ userId, isEmailVerified }: { userId: string; isEmail
 			</div>
 
 			{/* CTA */}
-			<Card className="bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
+			<Card className="bg-linear-to-r from-primary/5 to-primary/10 border-primary/20">
 				<CardContent className="flex flex-col items-center justify-between gap-4 p-6 sm:flex-row">
 					<div>
 						<h3 className="text-lg font-semibold">Find Your Perfect Room</h3>
@@ -247,46 +252,43 @@ function StudentDashboard({ userId, isEmailVerified }: { userId: string; isEmail
 }
 
 function PgOwnerDashboard({ userId }: { userId: string }) {
-	const [profile, setProfile] = useState<PgOwnerProfile | null>(null);
-	const [activeListings, setActiveListings] = useState(0);
-	const [propertyCount, setPropertyCount] = useState(0);
-	const [confirmedConnections, setConfirmedConnections] = useState(0);
-	const [pendingConnections, setPendingConnections] = useState(0);
-	const [recentNotifications, setRecentNotifications] = useState<Notification[]>([]);
-	const [isLoading, setIsLoading] = useState(true);
+	const { data: profile } = useQuery({
+		queryKey: queryKeys.pgOwnerProfile(userId),
+		queryFn: () => getPgOwnerProfile(userId),
+		staleTime: STALE.PROFILE,
+	});
 
-	useEffect(() => {
-		if (!userId) return;
-		let cancelled = false;
-		async function fetchData() {
-			try {
-				const [profileData, properties, allConnections, confirmedConn, notifications] = await Promise.all([
-					getPgOwnerProfile(userId),
-					getMyProperties(),
-					getMyConnections(),
-					getMyConnections("confirmed"),
-					getNotifications(false),
-				]);
-				if (cancelled) return;
-				setProfile(profileData);
-				setPropertyCount(properties.items.length);
-				const listings = properties.items.reduce((sum, p) => sum + p.active_listing_count, 0);
-				setActiveListings(listings);
-				setConfirmedConnections(confirmedConn.items.length);
-				setPendingConnections(allConnections.items.filter((c) => c.confirmationStatus !== "confirmed").length);
-				setRecentNotifications(notifications.items.slice(0, 4));
-			} catch {
-				// Silently handle
-			} finally {
-				if (!cancelled) setIsLoading(false);
-			}
-		}
-		fetchData();
-		return () => {
-			cancelled = true;
-		};
-	}, [userId]);
+	const { data: propertiesData, isLoading: loadingProperties } = useQuery({
+		queryKey: queryKeys.properties(),
+		queryFn: () => getMyProperties(),
+		staleTime: STALE.FEED,
+	});
 
+	const { data: allConnectionsData, isLoading: loadingAllConns } = useQuery({
+		queryKey: queryKeys.connections(),
+		queryFn: () => getMyConnections(),
+		staleTime: STALE.TRANSACTIONAL,
+	});
+
+	const { data: confirmedConnsData, isLoading: loadingConfirmed } = useQuery({
+		queryKey: queryKeys.connections("confirmed"),
+		queryFn: () => getMyConnections("confirmed"),
+		staleTime: STALE.TRANSACTIONAL,
+	});
+
+	const { data: notificationsData } = useQuery({
+		queryKey: queryKeys.notifications.list(false),
+		queryFn: () => getNotifications(false),
+		staleTime: STALE.NOTIFICATION,
+	});
+
+	const isLoading = loadingProperties || loadingAllConns || loadingConfirmed;
+
+	const propertyCount = propertiesData?.items.length ?? 0;
+	const activeListings = propertiesData?.items.reduce((sum, p) => sum + p.active_listing_count, 0) ?? 0;
+	const confirmedConnections = confirmedConnsData?.items.length ?? 0;
+	const pendingConnections = allConnectionsData?.items.filter((c) => c.confirmationStatus !== "confirmed").length ?? 0;
+	const recentNotifications = (notificationsData?.items ?? []).slice(0, 4) as Notification[];
 	const verificationStatus = profile?.verification_status || "unverified";
 
 	return (
@@ -454,7 +456,7 @@ function PgOwnerDashboard({ userId }: { userId: string }) {
 								<Link
 									key={notification.notificationId}
 									to="/notifications"
-									className="flex items-start gap-3 rounded-lg p-3 bg-muted/40 hover:bg-muted/60 transition-colors block">
+									className="flex items-start gap-3 rounded-lg p-3 bg-muted/40 hover:bg-muted/60 transition-colors">
 									<div className="size-2 rounded-full bg-primary mt-2 shrink-0" />
 									<div className="flex-1 min-w-0">
 										<p className="text-sm font-medium line-clamp-1">{notification.message}</p>

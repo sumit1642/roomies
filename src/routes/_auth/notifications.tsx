@@ -1,11 +1,14 @@
 // src/routes/_auth/notifications.tsx
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "#/components/ui/button";
 import { Card, CardContent } from "#/components/ui/card";
 import { EmptyState } from "#/components/EmptyState";
 import { LoadMoreButton } from "#/components/LoadMoreButton";
 import { getNotifications, markAsRead } from "#/lib/api/notifications";
+import { queryKeys } from "#/lib/queryKeys";
+import { STALE } from "#/lib/queryClient";
 import type { Notification, Cursor } from "#/types";
 import { toast } from "#/components/ui/sonner";
 import {
@@ -74,71 +77,94 @@ function getNotificationMeta(type: string): {
 
 function NotificationsPage() {
 	const navigate = useNavigate();
-	const [notifications, setNotifications] = useState<Notification[]>([]);
-	const [isLoading, setIsLoading] = useState(true);
-	const [isLoadingMore, setIsLoadingMore] = useState(false);
+	const qc = useQueryClient();
 	const [nextCursor, setNextCursor] = useState<Cursor | null>(null);
+	const [isLoadingMore, setIsLoadingMore] = useState(false);
 	const [markingId, setMarkingId] = useState<string | null>(null);
 	const [markingAll, setMarkingAll] = useState(false);
 
-	const fetchNotifications = async (cursor?: Cursor, append = false) => {
-		try {
-			const data = await getNotifications(undefined, cursor);
-			if (append) {
-				setNotifications((prev) => [...prev, ...data.items]);
-			} else {
-				setNotifications(data.items);
-			}
+	// ── Initial fetch ────────────────────────────────────────────────────────
+	const {
+		data: notificationsData,
+		isLoading,
+		setData,
+	} = useQuery({
+		queryKey: queryKeys.notifications.list(undefined),
+		queryFn: async () => {
+			const data = await getNotifications(undefined);
 			setNextCursor(data.nextCursor);
-		} catch {
-			toast.error("Failed to load notifications");
-		}
+			return data;
+		},
+		staleTime: STALE.NOTIFICATION,
+		// Cast setData to avoid TS confusion — we update cache manually below
+	}) as {
+		data: { items: Notification[] } | undefined;
+		isLoading: boolean;
+		setData: undefined;
 	};
 
-	useEffect(() => {
-		fetchNotifications().finally(() => setIsLoading(false));
-	}, []);
+	const notifications: Notification[] = notificationsData?.items ?? [];
+
+	// Helper: optimistically update the cached notification list
+	const patchCache = (updater: (prev: Notification[]) => Notification[]) => {
+		qc.setQueryData(queryKeys.notifications.list(undefined), (old: { items: Notification[] } | undefined) =>
+			old ? { ...old, items: updater(old.items) } : old,
+		);
+	};
+
+	// ── Mark single as read ──────────────────────────────────────────────────
+	const markSingleMutation = useMutation({
+		mutationFn: (id: string) => markAsRead([id]),
+		onMutate: (id) => {
+			setMarkingId(id);
+			patchCache((prev) => prev.map((n) => (n.notificationId === id ? { ...n, isRead: true } : n)));
+		},
+		onSuccess: () => {
+			// Invalidate bell count so it decrements immediately
+			qc.invalidateQueries({ queryKey: queryKeys.notifications.unreadCount() });
+		},
+		onError: () => {
+			toast.error("Failed to mark as read");
+		},
+		onSettled: () => setMarkingId(null),
+	});
+
+	// ── Mark all as read ─────────────────────────────────────────────────────
+	const markAllMutation = useMutation({
+		mutationFn: () => markAsRead(),
+		onMutate: () => {
+			setMarkingAll(true);
+			patchCache((prev) => prev.map((n) => ({ ...n, isRead: true })));
+		},
+		onSuccess: () => {
+			qc.invalidateQueries({ queryKey: queryKeys.notifications.unreadCount() });
+			toast.success("All notifications marked as read");
+		},
+		onError: () => {
+			toast.error("Failed to mark all as read");
+		},
+		onSettled: () => setMarkingAll(false),
+	});
 
 	const handleLoadMore = async (cursor: Cursor) => {
 		setIsLoadingMore(true);
-		await fetchNotifications(cursor, true);
-		setIsLoadingMore(false);
-	};
-
-	const handleMarkAsRead = async (id: string) => {
-		setMarkingId(id);
 		try {
-			await markAsRead([id]);
-			setNotifications((prev) => prev.map((n) => (n.notificationId === id ? { ...n, isRead: true } : n)));
+			const data = await getNotifications(undefined, cursor);
+			qc.setQueryData(queryKeys.notifications.list(undefined), (old: { items: Notification[] } | undefined) =>
+				old ? { ...old, items: [...old.items, ...data.items] } : data,
+			);
+			setNextCursor(data.nextCursor);
 		} catch {
-			toast.error("Failed to mark as read");
+			toast.error("Failed to load notifications");
 		} finally {
-			setMarkingId(null);
-		}
-	};
-
-	const handleMarkAllAsRead = async () => {
-		setMarkingAll(true);
-		try {
-			await markAsRead();
-			setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-			toast.success("All notifications marked as read");
-		} catch {
-			toast.error("Failed to mark all as read");
-		} finally {
-			setMarkingAll(false);
+			setIsLoadingMore(false);
 		}
 	};
 
 	const handleNotificationClick = async (notification: Notification) => {
-		// Mark as read
 		if (!notification.isRead) {
-			await markAsRead([notification.notificationId]).catch(() => {});
-			setNotifications((prev) =>
-				prev.map((n) => (n.notificationId === notification.notificationId ? { ...n, isRead: true } : n)),
-			);
+			markSingleMutation.mutate(notification.notificationId);
 		}
-		// Navigate to relevant page
 		const meta = getNotificationMeta(notification.type);
 		if (meta.actionPath) {
 			navigate({ to: meta.actionPath as "/" });
@@ -169,7 +195,7 @@ function NotificationsPage() {
 				{unreadCount > 0 && (
 					<Button
 						variant="outline"
-						onClick={handleMarkAllAsRead}
+						onClick={() => markAllMutation.mutate()}
 						disabled={markingAll}>
 						{markingAll ?
 							<Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -215,9 +241,7 @@ function NotificationsPage() {
 												</p>
 												{/* Show action hint */}
 												{meta.actionPath && (
-													<p className="text-xs text-primary mt-1 opacity-70">
-														Click to view →
-													</p>
+													<p className="text-xs text-primary mt-1 opacity-70">Click to view →</p>
 												)}
 											</div>
 											{!notification.isRead && (
@@ -226,7 +250,7 @@ function NotificationsPage() {
 													size="sm"
 													onClick={(e) => {
 														e.stopPropagation();
-														handleMarkAsRead(notification.notificationId);
+														markSingleMutation.mutate(notification.notificationId);
 													}}
 													disabled={markingId === notification.notificationId}
 													className="shrink-0">

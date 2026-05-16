@@ -225,12 +225,12 @@ export interface ListingSearchItem {
 	property_name: string | null;
 	average_rating: number;
 	cover_photo_url: string | null;
-	// CamelCase — JS-side transformations (toRupees)
+	latitude: number | null;
+	longitude: number | null;
 	rentPerMonth: number;
 	depositAmount: number;
 	compatibilityScore: number;
 	compatibilityAvailable: boolean;
-	/** Percent above/below local median rent. null if no index data. */
 	rentDeviation: number | null;
 }
 

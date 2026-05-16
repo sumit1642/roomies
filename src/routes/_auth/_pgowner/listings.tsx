@@ -24,7 +24,7 @@ import { ConfirmDialog } from "#/components/ConfirmDialog";
 import { AmenityPicker } from "#/components/AmenityPicker";
 import { PreferencePicker } from "#/components/PreferencePicker";
 import { StarRating } from "#/components/StarRating";
-import { searchListings, createListing, updateListingStatus, deleteListing } from "#/lib/api/listings";
+import { searchListings, createListing, updateListingStatus, deleteListing, renewListing } from "#/lib/api/listings";
 import { getMyProperties } from "#/lib/api/properties";
 import { getListingInterests, updateInterestStatus } from "#/lib/api/interests";
 import { getStudentProfile, revealStudentContact } from "#/lib/api/profiles";
@@ -53,6 +53,7 @@ import {
 	ExternalLink,
 	AlertCircle,
 	MessageCircle,
+	RefreshCw,
 } from "lucide-react";
 import type {
 	ListingSearchItem,
@@ -826,6 +827,7 @@ function ListingsPage() {
 	const [deleteTarget, setDeleteTarget] = useState<ListingSearchItem | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [toggleLoading, setToggleLoading] = useState<string | null>(null);
+	const [renewingId, setRenewingId] = useState<string | null>(null);
 
 	const getDefaultFormData = (propId?: string): ListingFormData => ({
 		propertyId: propId || "",
@@ -948,6 +950,22 @@ function ListingsPage() {
 			}
 		} finally {
 			setToggleLoading(null);
+		}
+	};
+	const handleRenew = async (listing: ListingSearchItem) => {
+		setRenewingId(listing.listing_id);
+		try {
+			await renewListing(listing.listing_id);
+			toast.success("Listing renewed for 60 days");
+			fetchData();
+		} catch (err) {
+			if (err instanceof ApiClientError) {
+				toast.error(err.body.message || "Failed to renew listing");
+			} else {
+				toast.error("Failed to renew listing");
+			}
+		} finally {
+			setRenewingId(null);
 		}
 	};
 
@@ -1098,6 +1116,21 @@ function ListingsPage() {
 												: listing.status === "active" ?
 													<ToggleRight className="h-4 w-4 text-emerald-600" />
 												:	<ToggleLeft className="h-4 w-4 text-muted-foreground" />}
+											</Button>
+										)}
+
+										{/* Renew — for expired or deactivated listings */}
+										{(listing.status === "expired" || listing.status === "deactivated") && (
+											<Button
+												variant="ghost"
+												size="sm"
+												className="h-8 px-2.5 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+												onClick={() => handleRenew(listing)}
+												disabled={renewingId === listing.listing_id}
+												title="Renew listing for 60 days">
+												{renewingId === listing.listing_id ?
+													<Loader2 className="h-4 w-4 animate-spin" />
+												:	<RefreshCw className="h-4 w-4" />}
 											</Button>
 										)}
 

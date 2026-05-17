@@ -61,6 +61,28 @@ function CompatibilityBadge({ score, available }: { score: number; available: bo
 	);
 }
 
+function RentDeviationBadge({ deviation }: { deviation: number | null }) {
+	if (deviation === null || deviation === undefined) return null;
+
+	const isAbove = deviation > 0;
+	const isNear = Math.abs(deviation) <= 5;
+
+	if (isNear) return null;
+
+	const value = Math.abs(deviation);
+	const label = isAbove ? `${value}% above median` : `${value}% below median`;
+	const style =
+		isAbove ?
+			"text-red-700 bg-red-50 border-red-200 dark:text-red-400 dark:bg-red-950 dark:border-red-800"
+		:	"text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-950 dark:border-emerald-800";
+
+	return (
+		<div className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border", style)}>
+			{isAbove ? "↑" : "↓"} {label}
+		</div>
+	);
+}
+
 function BrowseListingsPage() {
 	const searchParams = Route.useSearch();
 	const { role, isEmailVerified } = useAuth();
@@ -458,6 +480,8 @@ function BrowseListingsPage() {
 											/>
 										)}
 									</div>
+
+									<RentDeviationBadge deviation={listing.rentDeviation ?? null} />
 
 									{listing.average_rating > 0 && (
 										<StarRating

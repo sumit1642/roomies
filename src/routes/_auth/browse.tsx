@@ -17,7 +17,20 @@ import { STALE } from "#/lib/queryClient";
 import type { ListingSearchItem, ListingFilters } from "#/types";
 import { RoomType } from "#/types/enums";
 import { toast } from "#/components/ui/sonner";
-import { Search, Bed, MapPin, IndianRupee, Heart, Filter, X, Building2, Users, Loader2, Zap } from "lucide-react";
+import {
+	Search,
+	Bed,
+	MapPin,
+	IndianRupee,
+	Heart,
+	Filter,
+	X,
+	Building2,
+	Users,
+	Loader2,
+	Zap,
+	LocateFixed,
+} from "lucide-react";
 import type { Cursor } from "#/types";
 import { useAuth } from "#/context/AuthContext";
 import { cn } from "#/lib/utils";
@@ -42,6 +55,8 @@ export const Route = createFileRoute("/_auth/browse")({
 	}),
 });
 
+const NEAR_ME_RADIUS_KM = 5;
+
 function CompatibilityBadge({ score, available }: { score: number; available: boolean }) {
 	if (!available || score === 0) return null;
 	// Max 7 preference categories
@@ -54,7 +69,8 @@ function CompatibilityBadge({ score, available }: { score: number; available: bo
 		:	"text-slate-600 bg-slate-50 border-slate-200 dark:text-slate-400 dark:bg-slate-900 dark:border-slate-700";
 
 	return (
-		<div className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border", color)}>
+		<div
+			className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border", color)}>
 			<Zap className="size-3" />
 			{score}/{7} match
 		</div>
@@ -77,7 +93,8 @@ function RentDeviationBadge({ deviation }: { deviation: number | null }) {
 		:	"text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-400 dark:bg-emerald-950 dark:border-emerald-800";
 
 	return (
-		<div className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border", style)}>
+		<div
+			className={cn("inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border", style)}>
 			{isAbove ? "↑" : "↓"} {label}
 		</div>
 	);
@@ -91,6 +108,7 @@ function BrowseListingsPage() {
 
 	const [showFilters, setShowFilters] = useState(false);
 	const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
+	const [isLocating, setIsLocating] = useState(false);
 
 	const [filters, setFilters] = useState<ListingFilters>({
 		city: searchParams.city || "",
@@ -118,6 +136,9 @@ function BrowseListingsPage() {
 		minRent: filters.min_rent,
 		maxRent: filters.max_rent,
 		preferredGender: filters.gender_preference,
+		lat: filters.lat,
+		lng: filters.lng,
+		radius: filters.radius,
 	};
 
 	const {
@@ -202,13 +223,46 @@ function BrowseListingsPage() {
 		setShowFilters(false);
 	};
 
+	const handleNearMe = () => {
+		if (!("geolocation" in navigator)) {
+			toast.error("Location access is not supported by this browser");
+			return;
+		}
+
+		setIsLocating(true);
+		navigator.geolocation.getCurrentPosition(
+			(position) => {
+				const locationFilters = {
+					...tempFilters,
+					city: undefined,
+					lat: position.coords.latitude,
+					lng: position.coords.longitude,
+					radius: NEAR_ME_RADIUS_KM,
+				};
+				setTempFilters(locationFilters);
+				setFilters(locationFilters);
+				setIsLocating(false);
+				toast.success(`Showing listings within ${NEAR_ME_RADIUS_KM} km`);
+			},
+			() => {
+				setIsLocating(false);
+				toast.error("Unable to access your location");
+			},
+			{ enableHighAccuracy: true, timeout: 10000, maximumAge: 5 * 60 * 1000 },
+		);
+	};
+
 	const handleLoadMore = () => {
 		if (hasNextPage && !isFetchingNextPage) {
 			fetchNextPage();
 		}
 	};
 
-	const activeFilterCount = Object.values(filters).filter((v) => v !== undefined && v !== "").length;
+	const hasProximity = filters.lat !== undefined && filters.lng !== undefined;
+	const activeFilterCount =
+		[filters.city, filters.room_type, filters.min_rent, filters.max_rent, filters.gender_preference].filter(
+			(v) => v !== undefined && v !== "",
+		).length + (hasProximity ? 1 : 0);
 
 	if (isLoading) {
 		return (
@@ -235,11 +289,28 @@ function BrowseListingsPage() {
 					<Input
 						placeholder="Search by city..."
 						value={tempFilters.city || ""}
-						onChange={(e) => setTempFilters((prev) => ({ ...prev, city: e.target.value }))}
+						onChange={(e) =>
+							setTempFilters((prev) => ({
+								...prev,
+								city: e.target.value,
+								lat: undefined,
+								lng: undefined,
+								radius: undefined,
+							}))
+						}
 						onKeyDown={(e) => e.key === "Enter" && handleApplyFilters()}
 						className="pl-10"
 					/>
 				</div>
+				<Button
+					variant={hasProximity ? "default" : "outline"}
+					onClick={handleNearMe}
+					disabled={isLocating}>
+					{isLocating ?
+						<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+					:	<LocateFixed className="mr-2 h-4 w-4" />}
+					Near me
+				</Button>
 				<Button
 					variant={showFilters ? "default" : "outline"}
 					onClick={() => setShowFilters(!showFilters)}>
@@ -268,7 +339,8 @@ function BrowseListingsPage() {
 									onValueChange={(value) =>
 										setTempFilters((prev) => ({
 											...prev,
-											room_type: value === "all" ? undefined : (value as ListingFilters["room_type"]),
+											room_type:
+												value === "all" ? undefined : (value as ListingFilters["room_type"]),
 										}))
 									}>
 									<SelectTrigger>
@@ -292,7 +364,9 @@ function BrowseListingsPage() {
 										setTempFilters((prev) => ({
 											...prev,
 											gender_preference:
-												value === "all" ? undefined : (value as ListingFilters["gender_preference"]),
+												value === "all" ? undefined : (
+													(value as ListingFilters["gender_preference"])
+												),
 										}))
 									}>
 									<SelectTrigger>
@@ -402,7 +476,9 @@ function BrowseListingsPage() {
 													<Loader2 className="size-4 animate-spin" />
 												:	<Heart
 														className="size-4"
-														fill={savedIds.has(listing.listing_id) ? "currentColor" : "none"}
+														fill={
+															savedIds.has(listing.listing_id) ? "currentColor" : "none"
+														}
 													/>
 												}
 											</button>
@@ -439,9 +515,15 @@ function BrowseListingsPage() {
 													<Loader2 className="size-4 animate-spin" />
 												:	<Heart
 														className="size-4"
-														fill={savedIds.has(listing.listing_id) ? "currentColor" : "none"}
+														fill={
+															savedIds.has(listing.listing_id) ? "currentColor" : "none"
+														}
 														strokeWidth={savedIds.has(listing.listing_id) ? 0 : 2}
-														color={savedIds.has(listing.listing_id) ? "var(--destructive)" : "currentColor"}
+														color={
+															savedIds.has(listing.listing_id) ? "var(--destructive)" : (
+																"currentColor"
+															)
+														}
 													/>
 												}
 											</Button>
@@ -495,7 +577,9 @@ function BrowseListingsPage() {
 										<div className="flex items-center text-primary font-bold">
 											<IndianRupee className="h-3.5 w-3.5" />
 											{formatCurrency(listing.rentPerMonth)}
-											<span className="text-xs font-normal text-muted-foreground ml-0.5">/mo</span>
+											<span className="text-xs font-normal text-muted-foreground ml-0.5">
+												/mo
+											</span>
 										</div>
 										<Link
 											to="/listing/$id"

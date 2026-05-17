@@ -517,6 +517,9 @@ export interface ListingFilters {
 	min_rent?: number;
 	max_rent?: number;
 	gender_preference?: Gender;
+	lat?: number;
+	lng?: number;
+	radius?: number;
 }
 
 // ── Roommate Finder ──────────────────────────────────────────────────────────

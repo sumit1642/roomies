@@ -536,6 +536,8 @@ export interface RoommateProfile {
 	yearOfStudy: number | null;
 	gender: Gender | null;
 	bio: string | null;
+	/** Roommate-specific intro: returned by PUT /students/:userId/roommate-profile */
+	roommateBio: string | null;
 	isOptedIn: boolean;
 	/** Compatibility score 0–100, null if preferences unavailable */
 	compatibilityScore: number | null;
@@ -619,6 +621,47 @@ export interface Report {
 export interface SubmitReportInput {
 	reason: ReportReason;
 	description?: string;
+}
+
+// ── Admin: Verification Queue ─────────────────────────────────────────────────
+
+export interface VerificationQueueItem {
+	request_id: string;
+	user_id: string;
+	document_type: DocumentType;
+	document_url: string;
+	submitted_at: string;
+	business_name: string;
+	owner_full_name: string;
+	verification_status: VerificationStatus;
+	email: string;
+}
+
+// ── Admin: Report Queue ───────────────────────────────────────────────────────
+
+export interface AdminReportQueueItem {
+	reportId: string;
+	reporterId: string;
+	ratingId: string;
+	reason: ReportReason;
+	explanation: string | null;
+	status: ReportStatus;
+	submittedAt: string;
+	rating: {
+		overallScore: number;
+		cleanlinessScore: number | null;
+		communicationScore: number | null;
+		reliabilityScore: number | null;
+		valueScore: number | null;
+		comment: string | null;
+		revieweeType: RevieweeType;
+		revieweeId: string;
+		isVisible: boolean;
+		createdAt: string;
+		reviewer: { fullName: string; profilePhotoUrl: string | null };
+		reviewee: { fullName: string; profilePhotoUrl: string | null };
+	};
+	reporter: { fullName: string; profilePhotoUrl: string | null };
 }
 
 // ── Legacy compatibility types ────────────────────────────────────────────────

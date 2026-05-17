@@ -22,6 +22,7 @@ import { Route as AuthConnectionsRouteImport } from './routes/_auth/connections'
 import { Route as AuthBrowseRouteImport } from './routes/_auth/browse'
 import { Route as AuthStudentRouteImport } from './routes/_auth/_student'
 import { Route as AuthPgownerRouteImport } from './routes/_auth/_pgowner'
+import { Route as AuthAdminRouteImport } from './routes/_auth/_admin'
 import { Route as AuthListingIdRouteImport } from './routes/_auth/listing.$id'
 import { Route as AuthStudentSavedRouteImport } from './routes/_auth/_student/saved'
 import { Route as AuthStudentRoommatesRouteImport } from './routes/_auth/_student/roommates'
@@ -29,6 +30,8 @@ import { Route as AuthStudentPreferencesRouteImport } from './routes/_auth/_stud
 import { Route as AuthStudentInterestsRouteImport } from './routes/_auth/_student/interests'
 import { Route as AuthPgownerPropertiesRouteImport } from './routes/_auth/_pgowner/properties'
 import { Route as AuthPgownerListingsRouteImport } from './routes/_auth/_pgowner/listings'
+import { Route as AuthAdminVerificationRouteImport } from './routes/_auth/_admin/verification'
+import { Route as AuthAdminReportsRouteImport } from './routes/_auth/_admin/reports'
 
 const RegisterRoute = RegisterRouteImport.update({
   id: '/register',
@@ -92,6 +95,10 @@ const AuthPgownerRoute = AuthPgownerRouteImport.update({
   id: '/_pgowner',
   getParentRoute: () => AuthRoute,
 } as any)
+const AuthAdminRoute = AuthAdminRouteImport.update({
+  id: '/_admin',
+  getParentRoute: () => AuthRoute,
+} as any)
 const AuthListingIdRoute = AuthListingIdRouteImport.update({
   id: '/listing/$id',
   path: '/listing/$id',
@@ -127,6 +134,16 @@ const AuthPgownerListingsRoute = AuthPgownerListingsRouteImport.update({
   path: '/listings',
   getParentRoute: () => AuthPgownerRoute,
 } as any)
+const AuthAdminVerificationRoute = AuthAdminVerificationRouteImport.update({
+  id: '/verification',
+  path: '/verification',
+  getParentRoute: () => AuthAdminRoute,
+} as any)
+const AuthAdminReportsRoute = AuthAdminReportsRouteImport.update({
+  id: '/reports',
+  path: '/reports',
+  getParentRoute: () => AuthAdminRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -139,6 +156,8 @@ export interface FileRoutesByFullPath {
   '/notifications': typeof AuthNotificationsRoute
   '/profile': typeof AuthProfileRoute
   '/sessions': typeof AuthSessionsRoute
+  '/reports': typeof AuthAdminReportsRoute
+  '/verification': typeof AuthAdminVerificationRoute
   '/listings': typeof AuthPgownerListingsRoute
   '/properties': typeof AuthPgownerPropertiesRoute
   '/interests': typeof AuthStudentInterestsRoute
@@ -158,6 +177,8 @@ export interface FileRoutesByTo {
   '/notifications': typeof AuthNotificationsRoute
   '/profile': typeof AuthProfileRoute
   '/sessions': typeof AuthSessionsRoute
+  '/reports': typeof AuthAdminReportsRoute
+  '/verification': typeof AuthAdminVerificationRoute
   '/listings': typeof AuthPgownerListingsRoute
   '/properties': typeof AuthPgownerPropertiesRoute
   '/interests': typeof AuthStudentInterestsRoute
@@ -173,6 +194,7 @@ export interface FileRoutesById {
   '/about': typeof AboutRoute
   '/login': typeof LoginRoute
   '/register': typeof RegisterRoute
+  '/_auth/_admin': typeof AuthAdminRouteWithChildren
   '/_auth/_pgowner': typeof AuthPgownerRouteWithChildren
   '/_auth/_student': typeof AuthStudentRouteWithChildren
   '/_auth/browse': typeof AuthBrowseRoute
@@ -181,6 +203,8 @@ export interface FileRoutesById {
   '/_auth/notifications': typeof AuthNotificationsRoute
   '/_auth/profile': typeof AuthProfileRoute
   '/_auth/sessions': typeof AuthSessionsRoute
+  '/_auth/_admin/reports': typeof AuthAdminReportsRoute
+  '/_auth/_admin/verification': typeof AuthAdminVerificationRoute
   '/_auth/_pgowner/listings': typeof AuthPgownerListingsRoute
   '/_auth/_pgowner/properties': typeof AuthPgownerPropertiesRoute
   '/_auth/_student/interests': typeof AuthStudentInterestsRoute
@@ -202,6 +226,8 @@ export interface FileRouteTypes {
     | '/notifications'
     | '/profile'
     | '/sessions'
+    | '/reports'
+    | '/verification'
     | '/listings'
     | '/properties'
     | '/interests'
@@ -221,6 +247,8 @@ export interface FileRouteTypes {
     | '/notifications'
     | '/profile'
     | '/sessions'
+    | '/reports'
+    | '/verification'
     | '/listings'
     | '/properties'
     | '/interests'
@@ -235,6 +263,7 @@ export interface FileRouteTypes {
     | '/about'
     | '/login'
     | '/register'
+    | '/_auth/_admin'
     | '/_auth/_pgowner'
     | '/_auth/_student'
     | '/_auth/browse'
@@ -243,6 +272,8 @@ export interface FileRouteTypes {
     | '/_auth/notifications'
     | '/_auth/profile'
     | '/_auth/sessions'
+    | '/_auth/_admin/reports'
+    | '/_auth/_admin/verification'
     | '/_auth/_pgowner/listings'
     | '/_auth/_pgowner/properties'
     | '/_auth/_student/interests'
@@ -353,6 +384,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthPgownerRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_auth/_admin': {
+      id: '/_auth/_admin'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthAdminRouteImport
+      parentRoute: typeof AuthRoute
+    }
     '/_auth/listing/$id': {
       id: '/_auth/listing/$id'
       path: '/listing/$id'
@@ -402,8 +440,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthPgownerListingsRouteImport
       parentRoute: typeof AuthPgownerRoute
     }
+    '/_auth/_admin/verification': {
+      id: '/_auth/_admin/verification'
+      path: '/verification'
+      fullPath: '/verification'
+      preLoaderRoute: typeof AuthAdminVerificationRouteImport
+      parentRoute: typeof AuthAdminRoute
+    }
+    '/_auth/_admin/reports': {
+      id: '/_auth/_admin/reports'
+      path: '/reports'
+      fullPath: '/reports'
+      preLoaderRoute: typeof AuthAdminReportsRouteImport
+      parentRoute: typeof AuthAdminRoute
+    }
   }
 }
+
+interface AuthAdminRouteChildren {
+  AuthAdminReportsRoute: typeof AuthAdminReportsRoute
+  AuthAdminVerificationRoute: typeof AuthAdminVerificationRoute
+}
+
+const AuthAdminRouteChildren: AuthAdminRouteChildren = {
+  AuthAdminReportsRoute: AuthAdminReportsRoute,
+  AuthAdminVerificationRoute: AuthAdminVerificationRoute,
+}
+
+const AuthAdminRouteWithChildren = AuthAdminRoute._addFileChildren(
+  AuthAdminRouteChildren,
+)
 
 interface AuthPgownerRouteChildren {
   AuthPgownerListingsRoute: typeof AuthPgownerListingsRoute
@@ -438,6 +504,7 @@ const AuthStudentRouteWithChildren = AuthStudentRoute._addFileChildren(
 )
 
 interface AuthRouteChildren {
+  AuthAdminRoute: typeof AuthAdminRouteWithChildren
   AuthPgownerRoute: typeof AuthPgownerRouteWithChildren
   AuthStudentRoute: typeof AuthStudentRouteWithChildren
   AuthBrowseRoute: typeof AuthBrowseRoute
@@ -450,6 +517,7 @@ interface AuthRouteChildren {
 }
 
 const AuthRouteChildren: AuthRouteChildren = {
+  AuthAdminRoute: AuthAdminRouteWithChildren,
   AuthPgownerRoute: AuthPgownerRouteWithChildren,
   AuthStudentRoute: AuthStudentRouteWithChildren,
   AuthBrowseRoute: AuthBrowseRoute,

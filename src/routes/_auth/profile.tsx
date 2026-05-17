@@ -1,6 +1,7 @@
-// src/routes/_auth/profile.tsx
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "#/lib/queryKeys";
 import { Loader2, CheckCircle, Clock, AlertCircle, Trash2, Camera, Pencil, X, Save } from "lucide-react";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
@@ -126,6 +127,7 @@ function ProfilePhotoEditor({
 // ─── Student Profile Page ─────────────────────────────────────────────────────
 function StudentProfilePage({ userId, refreshUser }: { userId: string; refreshUser: () => Promise<void> }) {
 	const { isEmailVerified } = useAuth();
+	const qc = useQueryClient();
 	const [profile, setProfile] = useState<StudentProfile | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isEditing, setIsEditing] = useState(false);
@@ -191,6 +193,8 @@ function StudentProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 				dateOfBirth: formData.dateOfBirth || undefined,
 			});
 			setProfile(updated);
+			// Invalidate so dashboard and any other consumer gets fresh data
+			void qc.invalidateQueries({ queryKey: queryKeys.studentProfile(userId) });
 			toast.success("Profile updated successfully");
 			setIsEditing(false);
 		} catch {
@@ -454,6 +458,7 @@ function StudentProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 // ─── PG Owner Profile Page ────────────────────────────────────────────────────
 function PgOwnerProfilePage({ userId, refreshUser }: { userId: string; refreshUser: () => Promise<void> }) {
 	const { isEmailVerified } = useAuth();
+	const qc = useQueryClient();
 	const [profile, setProfile] = useState<PgOwnerProfile | null>(null);
 	const [isLoading, setIsLoading] = useState(true);
 	const [isEditing, setIsEditing] = useState(false);
@@ -521,6 +526,8 @@ function PgOwnerProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 				operatingSince: formData.operatingSince ? parseInt(formData.operatingSince) : undefined,
 			});
 			setProfile(updated);
+			// Invalidate so dashboard and any other consumer gets fresh data
+			void qc.invalidateQueries({ queryKey: queryKeys.pgOwnerProfile(userId) });
 			toast.success("Profile updated successfully");
 			setIsEditing(false);
 		} catch {

@@ -1,6 +1,12 @@
 // src/routes/_auth/_pgowner/properties.tsx
+// Migrated from raw useEffect → useQuery + useMutation with query cache invalidation.
+// All data fetches and mutations now flow through TanStack Query so:
+//  • Properties list is cached and deduplicated across navigations.
+//  • Create / update / delete mutations automatically invalidate the cache,
+//    avoiding the "stale list after mutation" bug in the useEffect version.
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "#/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "#/components/ui/card";
 import { Badge } from "#/components/ui/badge";
@@ -24,6 +30,8 @@ import { AmenityPicker } from "#/components/AmenityPicker";
 import { createProperty, updateProperty, deleteProperty, getMyProperties } from "#/lib/api/properties";
 import { toast } from "#/components/ui/sonner";
 import { Plus, Building2, MapPin, Edit, Trash2, Eye, Loader2 } from "lucide-react";
+import { queryKeys } from "#/lib/queryKeys";
+import { STALE } from "#/lib/queryClient";
 import type { PropertyListItem } from "#/types";
 
 export const Route = createFileRoute("/_auth/_pgowner/properties")({
@@ -183,12 +191,10 @@ function PropertyForm({ formData, onChange, onSubmit, isSubmitting, isEditing }:
 }
 
 function PropertiesPage() {
-	const [properties, setProperties] = useState<PropertyListItem[]>([]);
-	const [isLoading, setIsLoading] = useState(true);
+	const qc = useQueryClient();
 	const [isCreateOpen, setIsCreateOpen] = useState(false);
 	const [editingProperty, setEditingProperty] = useState<PropertyListItem | null>(null);
 	const [deleteConfirm, setDeleteConfirm] = useState<PropertyListItem | null>(null);
-	const [isSubmitting, setIsSubmitting] = useState(false);
 
 	const defaultFormData: PropertyFormData = {
 		propertyName: "",
@@ -204,21 +210,78 @@ function PropertiesPage() {
 
 	const [formData, setFormData] = useState<PropertyFormData>(defaultFormData);
 
-	useEffect(() => {
-		fetchProperties();
-	}, []);
+	// ── Data fetch ────────────────────────────────────────────────────────────
+	const { data: propertiesData, isLoading } = useQuery({
+		queryKey: queryKeys.properties(),
+		queryFn: () => getMyProperties(),
+		staleTime: STALE.FEED,
+	});
+	const properties = propertiesData?.items ?? [];
 
-	const fetchProperties = async () => {
-		try {
-			setIsLoading(true);
-			const res = await getMyProperties();
-			setProperties(res.items);
-		} catch {
-			toast.error("Failed to load properties");
-		} finally {
-			setIsLoading(false);
-		}
-	};
+	// ── Create mutation ───────────────────────────────────────────────────────
+	const createMutation = useMutation({
+		mutationFn: (data: PropertyFormData) =>
+			createProperty({
+				propertyName: data.propertyName,
+				addressLine: data.addressLine,
+				city: data.city,
+				locality: data.locality || undefined,
+				pincode: data.pincode || undefined,
+				description: data.description || undefined,
+				propertyType: data.propertyType,
+				houseRules: data.houseRules || undefined,
+				amenityIds: data.amenityIds,
+			}),
+		onSuccess: () => {
+			void qc.invalidateQueries({ queryKey: queryKeys.properties() });
+			toast.success("Property created successfully");
+			setIsCreateOpen(false);
+			setFormData(defaultFormData);
+		},
+		onError: (err: unknown) => {
+			const msg = err instanceof Error ? err.message : "Failed to create property";
+			toast.error(msg);
+		},
+	});
+
+	// ── Update mutation ───────────────────────────────────────────────────────
+	const updateMutation = useMutation({
+		mutationFn: ({ id, data }: { id: string; data: PropertyFormData }) =>
+			updateProperty(id, {
+				propertyName: data.propertyName,
+				addressLine: data.addressLine,
+				city: data.city,
+				locality: data.locality || undefined,
+				pincode: data.pincode || undefined,
+				description: data.description || undefined,
+				propertyType: data.propertyType,
+				houseRules: data.houseRules || undefined,
+				amenityIds: data.amenityIds,
+			}),
+		onSuccess: () => {
+			void qc.invalidateQueries({ queryKey: queryKeys.properties() });
+			toast.success("Property updated successfully");
+			setEditingProperty(null);
+			setFormData(defaultFormData);
+		},
+		onError: (err: unknown) => {
+			const msg = err instanceof Error ? err.message : "Failed to update property";
+			toast.error(msg);
+		},
+	});
+
+	// ── Delete mutation ───────────────────────────────────────────────────────
+	const deleteMutation = useMutation({
+		mutationFn: (propertyId: string) => deleteProperty(propertyId),
+		onSuccess: () => {
+			void qc.invalidateQueries({ queryKey: queryKeys.properties() });
+			toast.success("Property deleted successfully");
+			setDeleteConfirm(null);
+		},
+		onError: () => {
+			toast.error("Failed to delete property. Make sure it has no active listings.");
+		},
+	});
 
 	const handleOpenCreate = () => {
 		setFormData(defaultFormData);
@@ -240,64 +303,21 @@ function PropertiesPage() {
 		setEditingProperty(property);
 	};
 
-	const handleSubmit = async (e: React.FormEvent) => {
+	const handleSubmit = (e: React.FormEvent) => {
 		e.preventDefault();
 		if (!formData.propertyName || !formData.addressLine || !formData.city) {
 			toast.error("Property name, address, and city are required");
 			return;
 		}
 
-		setIsSubmitting(true);
-		try {
-			if (editingProperty) {
-				await updateProperty(editingProperty.property_id, {
-					propertyName: formData.propertyName,
-					addressLine: formData.addressLine,
-					city: formData.city,
-					locality: formData.locality || undefined,
-					pincode: formData.pincode || undefined,
-					description: formData.description || undefined,
-					propertyType: formData.propertyType,
-					houseRules: formData.houseRules || undefined,
-					amenityIds: formData.amenityIds,
-				});
-				toast.success("Property updated successfully");
-				setEditingProperty(null);
-			} else {
-				await createProperty({
-					propertyName: formData.propertyName,
-					addressLine: formData.addressLine,
-					city: formData.city,
-					locality: formData.locality || undefined,
-					pincode: formData.pincode || undefined,
-					description: formData.description || undefined,
-					propertyType: formData.propertyType,
-					houseRules: formData.houseRules || undefined,
-					amenityIds: formData.amenityIds,
-				});
-				toast.success("Property created successfully");
-				setIsCreateOpen(false);
-			}
-			fetchProperties();
-		} catch (err: unknown) {
-			const msg = err instanceof Error ? err.message : "Failed to save property";
-			toast.error(msg);
-		} finally {
-			setIsSubmitting(false);
+		if (editingProperty) {
+			updateMutation.mutate({ id: editingProperty.property_id, data: formData });
+		} else {
+			createMutation.mutate(formData);
 		}
 	};
 
-	const handleDelete = async () => {
-		if (!deleteConfirm) return;
-		try {
-			await deleteProperty(deleteConfirm.property_id);
-			toast.success("Property deleted successfully");
-			setDeleteConfirm(null);
-			fetchProperties();
-		} catch {
-			toast.error("Failed to delete property. Make sure it has no active listings.");
-		}
-	};
+	const isSubmitting = createMutation.isPending || updateMutation.isPending;
 
 	if (isLoading) {
 		return (
@@ -444,7 +464,7 @@ function PropertiesPage() {
 				title="Delete Property"
 				description={`Are you sure you want to delete "${deleteConfirm?.property_name}"? All listings must be removed first.`}
 				confirmLabel="Delete"
-				onConfirm={handleDelete}
+				onConfirm={() => deleteConfirm && deleteMutation.mutate(deleteConfirm.property_id)}
 				variant="destructive"
 			/>
 		</div>

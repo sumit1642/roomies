@@ -1,14 +1,17 @@
 // src/components/PreferencePicker.tsx
-// Reusable preference selector using radio buttons within each category.
-// Used in: listing creation/edit (PG owner), student preference settings.
+// Migrated from raw useEffect → useQuery for caching + deduplication.
+// With staleTime: STALE.STATIC (1 hour), preference metadata is fetched
+// once per session and reused even when the form is opened and closed repeatedly.
 //
 // For LISTINGS: the owner sets what kind of tenant they prefer.
 // For STUDENTS: the student sets their own lifestyle preferences.
 //
 // The backend expects { preferenceKey, preferenceValue }[] arrays.
 
-import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { getPreferencesMeta } from "#/lib/api/profiles";
+import { queryKeys } from "#/lib/queryKeys";
+import { STALE } from "#/lib/queryClient";
 import type { PreferenceMetaItem, PreferencePair, PreferenceKey } from "#/types";
 import { RadioGroup, RadioGroupItem } from "#/components/ui/radio-group";
 import { Label } from "#/components/ui/label";
@@ -25,15 +28,14 @@ interface PreferencePickerProps {
 }
 
 export function PreferencePicker({ value, onChange, disabled = false, allowClear = true }: PreferencePickerProps) {
-	const [meta, setMeta] = useState<PreferenceMetaItem[]>([]);
-	const [isLoading, setIsLoading] = useState(true);
-
-	useEffect(() => {
-		getPreferencesMeta()
-			.then(setMeta)
-			.catch(() => {})
-			.finally(() => setIsLoading(false));
-	}, []);
+	const {
+		data: meta = [],
+		isLoading,
+	} = useQuery({
+		queryKey: queryKeys.preferenceMeta(),
+		queryFn: getPreferencesMeta,
+		staleTime: STALE.STATIC, // preference schema changes only on backend deploy
+	});
 
 	// Build a lookup map for fast reads
 	const valueMap = value.reduce<Record<string, string>>((acc, pref) => {
@@ -70,7 +72,7 @@ export function PreferencePicker({ value, onChange, disabled = false, allowClear
 
 	return (
 		<div className="space-y-5">
-			{meta.map((item) => {
+			{meta.map((item: PreferenceMetaItem) => {
 				const selected = valueMap[item.preferenceKey];
 				return (
 					<div

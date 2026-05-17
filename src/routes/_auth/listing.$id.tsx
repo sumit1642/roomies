@@ -1,6 +1,7 @@
 // src/routes/_auth/listing.$id.tsx
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState, useMemo } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "#/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "#/components/ui/card";
 import { Badge } from "#/components/ui/badge";
@@ -18,12 +19,14 @@ import { Textarea } from "#/components/ui/textarea";
 import { Label } from "#/components/ui/label";
 import { StarRating } from "#/components/StarRating";
 import { UserAvatar } from "#/components/UserAvatar";
-import { getListing, saveListing, unsaveListing } from "#/lib/api/listings";
+import { getListing, saveListing, unsaveListing, getSavedListings } from "#/lib/api/listings";
 import { sendInterest } from "#/lib/api/interests";
 import { getPublicPropertyRatings } from "#/lib/api/ratings";
 import { formatCurrency, formatDate } from "#/lib/format";
 import { useAuth } from "#/context/AuthContext";
-import type { ListingDetail, PublicRating } from "#/types";
+import { queryKeys } from "#/lib/queryKeys";
+import { STALE } from "#/lib/queryClient";
+import type { PublicRating } from "#/types";
 import { toast } from "#/components/ui/sonner";
 import {
 	ArrowLeft,
@@ -105,65 +108,70 @@ function ListingDetailPage() {
 	const { id } = Route.useParams();
 	const navigate = useNavigate();
 	const { user, role, isEmailVerified } = useAuth();
-	const [listing, setListing] = useState<ListingDetail | null>(null);
-	const [isLoading, setIsLoading] = useState(true);
-	const [isSaved, setIsSaved] = useState(false);
-	const [isSaving, setIsSaving] = useState(false);
+	const qc = useQueryClient();
 	const [interestSent, setInterestSent] = useState(false);
 	const [isSendingInterest, setIsSendingInterest] = useState(false);
 	const [interestMessage, setInterestMessage] = useState("");
 	const [interestDialogOpen, setInterestDialogOpen] = useState(false);
-	const [propertyRatings, setPropertyRatings] = useState<PublicRating[]>([]);
 
 	const isStudent = role === "student";
 
-	useEffect(() => {
-		async function fetchListing() {
-			try {
-				setIsLoading(true);
-				const data = await getListing(id);
-				setListing(data);
-				if (data.property_id) {
-					getPublicPropertyRatings(data.property_id)
-						.then((r) => setPropertyRatings(r.items))
-						.catch(() => {});
-				}
-			} catch {
-				toast.error("Listing not found");
-				navigate({ to: "/browse", search: {} });
-			} finally {
-				setIsLoading(false);
-			}
-		}
-		fetchListing();
-	}, [id, navigate]);
+	// ── Listing data (replaces raw useEffect) ─────────────────────────────────
+	const { data: listing, isLoading } = useQuery({
+		queryKey: queryKeys.listing(id),
+		queryFn: () => getListing(id),
+		staleTime: STALE.FEED,
+		throwOnError: false,
+		meta: { onError: () => { toast.error("Listing not found"); navigate({ to: "/browse", search: {} }); } },
+	});
 
-	const handleToggleSave = async () => {
-		if (!listing) return;
-		if (!isEmailVerified) {
-			toast.error("Please verify your email to save listings");
-			return;
-		}
-		setIsSaving(true);
-		try {
-			if (isSaved) {
-				await unsaveListing(listing.listing_id);
-				setIsSaved(false);
-				toast.success("Removed from saved");
-			} else {
-				await saveListing(listing.listing_id);
-				setIsSaved(true);
-				toast.success("Saved to favourites");
-			}
-		} catch (err) {
+	// ── Property ratings ──────────────────────────────────────────────────────
+	const { data: propertyRatingsData } = useQuery({
+		queryKey: queryKeys.publicUserRatings(listing?.property_id ?? ""),
+		queryFn: () => getPublicPropertyRatings(listing!.property_id!),
+		enabled: !!listing?.property_id,
+		staleTime: STALE.FEED,
+	});
+	const propertyRatings: PublicRating[] = propertyRatingsData?.items ?? [];
+
+	// ── isSaved: hydrated from shared savedListings cache ─────────────────────
+	const { data: savedData } = useQuery({
+		queryKey: queryKeys.savedListings(),
+		queryFn: () => getSavedListings(),
+		staleTime: STALE.FEED,
+		enabled: isStudent,
+	});
+	const isSaved = useMemo(
+		() => (savedData?.items ?? []).some((s) => s.listing_id === id),
+		[savedData, id],
+	);
+
+	// ── Save/unsave mutation — invalidates shared savedListings cache ──────────
+	const saveUnsaveMutation = useMutation({
+		mutationFn: async (currentlySaved: boolean) => {
+			if (currentlySaved) await unsaveListing(id);
+			else await saveListing(id);
+		},
+		onSuccess: (_data, currentlySaved) => {
+			qc.invalidateQueries({ queryKey: queryKeys.savedListings() });
+			toast.success(currentlySaved ? "Removed from saved" : "Saved to favourites");
+		},
+		onError: (err) => {
 			if (err instanceof ApiClientError && err.status === 422) {
 				toast.error("This listing is no longer available");
 			} else {
 				toast.error("Failed to update saved status");
 			}
-		} finally {
-			setIsSaving(false);
+		},
+	});
+
+	const handleToggleSave = () => {
+		if (!listing) return;
+		if (!isEmailVerified) {
+			toast.error("Please verify your email to save listings");
+			return;
 		}
+		saveUnsaveMutation.mutate(isSaved);
 	};
 
 	const handleExpressInterest = async () => {
@@ -278,9 +286,9 @@ function ListingDetailPage() {
 										variant="ghost"
 										size="icon"
 										onClick={handleToggleSave}
-										disabled={isSaving}
+										disabled={saveUnsaveMutation.isPending}
 										className={isSaved ? "text-rose-500" : ""}>
-										{isSaving ?
+										{saveUnsaveMutation.isPending ?
 											<Loader2 className="h-5 w-5 animate-spin" />
 										:	<Heart
 												className="h-5 w-5"
@@ -399,6 +407,35 @@ function ListingDetailPage() {
 									))}
 								</div>
 							</CardContent>
+						</Card>
+					)}
+
+					{/* OSM Map — shown when listing has coordinates */}
+					{(listing.latitude && listing.longitude) && (
+						<Card className="overflow-hidden">
+							<CardHeader className="pb-2">
+								<CardTitle className="flex items-center gap-2 text-base">
+									<MapPin className="size-4" />
+									Location
+								</CardTitle>
+							</CardHeader>
+							<div className="rounded-b-lg overflow-hidden border-t border-border">
+								<iframe
+									title="Listing location map"
+									width="100%"
+									height="220"
+									loading="lazy"
+									referrerPolicy="no-referrer"
+									src={`https://www.openstreetmap.org/export/embed.html?bbox=${listing.longitude - 0.005}%2C${listing.latitude - 0.005}%2C${listing.longitude + 0.005}%2C${listing.latitude + 0.005}&layer=mapnik&marker=${listing.latitude}%2C${listing.longitude}`}
+								/>
+								<a
+									href={`https://www.openstreetmap.org/?mlat=${listing.latitude}&mlon=${listing.longitude}#map=16/${listing.latitude}/${listing.longitude}`}
+									target="_blank"
+									rel="noreferrer"
+									className="block text-xs text-center text-muted-foreground py-1.5 hover:text-foreground transition-colors">
+									View larger map →
+								</a>
+							</div>
 						</Card>
 					)}
 

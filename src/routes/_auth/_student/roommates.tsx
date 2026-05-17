@@ -294,9 +294,15 @@ function RoommateCard({
 			</CardHeader>
 
 			<CardContent className="px-4 pb-4 space-y-3">
-				{/* Bio */}
+				{/* Bio + Roommate Bio */}
 				{profile.bio && (
 					<p className="text-sm text-muted-foreground line-clamp-2 italic">&ldquo;{profile.bio}&rdquo;</p>
+				)}
+				{profile.roommateBio && (
+					<p className="text-xs text-muted-foreground line-clamp-2 border-l-2 border-primary/30 pl-2">
+						<span className="font-medium text-foreground/70">Looking for: </span>
+						{profile.roommateBio}
+					</p>
 				)}
 
 				{/* Education */}

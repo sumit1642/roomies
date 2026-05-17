@@ -1,10 +1,14 @@
 // src/components/AmenityPicker.tsx
-import { useState, useEffect } from "react";
+// Migrated from raw useEffect → useQuery for caching + deduplication.
+// With staleTime: STALE.STATIC (1 hour), the amenity catalog is fetched
+// once per session and reused even when the listing form is opened and closed repeatedly.
+import { useQuery } from "@tanstack/react-query";
 import { getAmenities } from "#/lib/api/amenities";
+import { queryKeys } from "#/lib/queryKeys";
+import { STALE } from "#/lib/queryClient";
 import type { Amenity } from "#/types";
 import { Checkbox } from "#/components/ui/checkbox";
 import { Label } from "#/components/ui/label";
-import { toast } from "#/components/ui/sonner";
 
 interface AmenityPickerProps {
 	selectedIds: string[];
@@ -19,25 +23,15 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export function AmenityPicker({ selectedIds, onChange, disabled = false }: AmenityPickerProps) {
-	const [amenities, setAmenities] = useState<Amenity[]>([]);
-	const [isLoading, setIsLoading] = useState(true);
-	const [amenitiesError, setAmenitiesError] = useState<unknown>(null);
-
-	useEffect(() => {
-		getAmenities()
-			.then((data) => {
-				setAmenities(data);
-				setAmenitiesError(null);
-			})
-			.catch((err) => {
-				console.error("[AmenityPicker] Failed to load amenities", err);
-				setAmenitiesError(err);
-				toast.error("Failed to load amenities", {
-					description: "Please refresh and try again.",
-				});
-			})
-			.finally(() => setIsLoading(false));
-	}, []);
+	const {
+		data: amenities = [],
+		isLoading,
+		isError,
+	} = useQuery({
+		queryKey: queryKeys.amenities(),
+		queryFn: getAmenities,
+		staleTime: STALE.STATIC, // amenities change only when admin adds/removes one
+	});
 
 	const handleToggle = (amenityId: string, checked: boolean) => {
 		if (checked) {
@@ -60,13 +54,8 @@ export function AmenityPicker({ selectedIds, onChange, disabled = false }: Ameni
 		);
 	}
 
-	if (amenitiesError) {
-		const errorMessage =
-			amenitiesError instanceof Error && amenitiesError.message ?
-				amenitiesError.message
-			:	"Unable to load amenities.";
-
-		return <p className="text-sm text-destructive">{errorMessage}</p>;
+	if (isError) {
+		return <p className="text-sm text-destructive">Unable to load amenities. Please refresh.</p>;
 	}
 
 	if (!amenities.length) {

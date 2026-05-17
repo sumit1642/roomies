@@ -1,6 +1,6 @@
 // src/routes/_auth.tsx
 import { createFileRoute, Outlet, Link, useNavigate, useLocation } from "@tanstack/react-router";
-import { Home, Search, Heart, Users, Bookmark, User, Building2, Menu, LogOut, ChevronDown, UserSearch, ShieldCheck } from "lucide-react";
+import { Home, Search, Heart, Users, Bookmark, User, Building2, Menu, LogOut, ChevronDown, UserSearch, ShieldCheck, ShieldAlert } from "lucide-react";
 import { useState, useEffect } from "react";
 import { Button } from "#/components/ui/button";
 import {
@@ -152,6 +152,16 @@ function AuthLayout() {
 										Sessions
 									</Link>
 								</DropdownMenuItem>
+								{role === "admin" && (
+									<DropdownMenuItem asChild>
+										<Link
+											to="/verification"
+											className="cursor-pointer text-destructive focus:text-destructive">
+											<ShieldAlert className="size-4 mr-2" />
+											Admin Panel
+										</Link>
+									</DropdownMenuItem>
+								)}
 								<DropdownMenuSeparator />
 								<DropdownMenuItem
 									onClick={handleLogout}

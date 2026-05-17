@@ -19,7 +19,9 @@ export const STALE = {
 // ── Query keys safe to persist to sessionStorage ───────────────────────────────
 // Do NOT persist: contact reveals (email/phone), session tokens, or notification content.
 // Safe: amenities, user profile, public listing data.
-const PERSIST_KEY_PREFIXES = ["amenities", "profile"];
+// "profile" intentionally excluded — student/PG owner profiles contain PII
+// (email, date_of_birth, gender) that must not survive tab duplication via sessionStorage.
+const PERSIST_KEY_PREFIXES = ["amenities"];
 
 // ── Singleton QueryClient ──────────────────────────────────────────────────────
 export const queryClient = new QueryClient({

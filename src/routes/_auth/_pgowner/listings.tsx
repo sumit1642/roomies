@@ -24,6 +24,7 @@ import { ConfirmDialog } from "#/components/ConfirmDialog";
 import { AmenityPicker } from "#/components/AmenityPicker";
 import { PreferencePicker } from "#/components/PreferencePicker";
 import { StarRating } from "#/components/StarRating";
+import { ListingAnalyticsDialog } from "#/components/ListingAnalyticsDialog";
 import { searchListings, createListing, updateListingStatus, deleteListing, renewListing } from "#/lib/api/listings";
 import { getMyProperties } from "#/lib/api/properties";
 import { getListingInterests, updateInterestStatus } from "#/lib/api/interests";
@@ -54,6 +55,7 @@ import {
 	AlertCircle,
 	MessageCircle,
 	RefreshCw,
+	BarChart2,
 } from "lucide-react";
 import type {
 	ListingSearchItem,
@@ -824,6 +826,10 @@ function ListingsPage() {
 		listingId: string;
 		listingTitle: string;
 	} | null>(null);
+	const [analyticsState, setAnalyticsState] = useState<{
+		listingId: string;
+		listingTitle: string;
+	} | null>(null);
 	const [deleteTarget, setDeleteTarget] = useState<ListingSearchItem | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [toggleLoading, setToggleLoading] = useState<string | null>(null);
@@ -1098,6 +1104,20 @@ function ListingsPage() {
 											Interests
 										</Button>
 
+										<Button
+											variant="ghost"
+											size="sm"
+											className="h-8 px-2.5"
+											onClick={() =>
+												setAnalyticsState({
+													listingId: listing.listing_id,
+													listingTitle: listing.title,
+												})
+											}
+											title="View analytics">
+											<BarChart2 className="h-4 w-4 text-muted-foreground" />
+										</Button>
+
 										{/* Toggle Active/Deactivated */}
 										{canToggle && (
 											<Button
@@ -1170,6 +1190,15 @@ function ListingsPage() {
 				onConfirm={handleDelete}
 				variant="destructive"
 			/>
+
+			{analyticsState && (
+				<ListingAnalyticsDialog
+					listingId={analyticsState.listingId}
+					listingTitle={analyticsState.listingTitle}
+					open={true}
+					onClose={() => setAnalyticsState(null)}
+				/>
+			)}
 		</div>
 	);
 }

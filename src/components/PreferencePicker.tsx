@@ -28,10 +28,7 @@ interface PreferencePickerProps {
 }
 
 export function PreferencePicker({ value, onChange, disabled = false, allowClear = true }: PreferencePickerProps) {
-	const {
-		data: meta = [],
-		isLoading,
-	} = useQuery({
+	const { data: meta = [], isLoading } = useQuery({
 		queryKey: queryKeys.preferenceMeta(),
 		queryFn: getPreferencesMeta,
 		staleTime: STALE.STATIC, // preference schema changes only on backend deploy
@@ -86,15 +83,15 @@ export function PreferencePicker({ value, onChange, disabled = false, allowClear
 									variant="ghost"
 									size="sm"
 									className="h-6 px-2 text-xs text-muted-foreground"
-									onClick={() => handleClear(item.preferenceKey as PreferenceKey)}
+									onClick={() => handleClear(item.preferenceKey)}
 									disabled={disabled}>
 									Clear
 								</Button>
 							)}
 						</div>
 						<RadioGroup
-							value={selected ?? ""}
-							onValueChange={(val) => handleSelect(item.preferenceKey as PreferenceKey, val)}
+							value={selected}
+							onValueChange={(val) => handleSelect(item.preferenceKey, val)}
 							disabled={disabled}
 							className="flex flex-wrap gap-3">
 							{item.values.map((option) => (

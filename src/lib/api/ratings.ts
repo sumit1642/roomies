@@ -8,7 +8,6 @@ import type {
 	ConnectionRatings,
 	RevieweeType,
 	Cursor,
-	LegacyApiResponse,
 	SubmitRatingResponse,
 	Report,
 	SubmitReportInput,
@@ -107,37 +106,3 @@ export async function reportRating(ratingId: string, data: SubmitReportInput): P
 	});
 	return res.data;
 }
-
-function ok<T>(data?: T, message?: string): LegacyApiResponse<T> {
-	return { success: true, data, message };
-}
-
-function fail<T>(message: string): LegacyApiResponse<T> {
-	return { success: false, message };
-}
-
-export const ratingsApi = {
-	async getPropertyRatings(propertyId: string): Promise<LegacyApiResponse<PublicRating[]>> {
-		try {
-			const res = await getPublicPropertyRatings(propertyId);
-			return ok(res.items);
-		} catch {
-			return fail("Failed to get property ratings");
-		}
-	},
-
-	async createRating(data: {
-		connectionId: string;
-		revieweeType: RevieweeType;
-		revieweeId: string;
-		overallScore: number;
-		comment?: string;
-	}): Promise<LegacyApiResponse<SubmitRatingResponse>> {
-		try {
-			const res = await submitRating(data);
-			return ok(res);
-		} catch {
-			return fail("Failed to submit rating");
-		}
-	},
-};

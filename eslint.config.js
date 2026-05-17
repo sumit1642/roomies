@@ -3,6 +3,15 @@
 import { tanstackConfig } from "@tanstack/eslint-config";
 
 export default [
+	{
+		ignores: [
+			".output/**",
+			"dist/**",
+			"node_modules/**",
+			"eslint.config.js",
+			"prettier.config.js",
+		],
+	},
 	...tanstackConfig,
 	{
 		rules: {
@@ -13,8 +22,5 @@ export default [
 			"@typescript-eslint/require-await": "off",
 			"pnpm/json-enforce-catalog": "off",
 		},
-	},
-	{
-		ignores: ["eslint.config.js", "prettier.config.js"],
 	},
 ];

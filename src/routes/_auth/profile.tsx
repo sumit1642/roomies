@@ -545,7 +545,7 @@ function PgOwnerProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 		setIsSubmittingDoc(true);
 		try {
 			await submitVerificationDocument(userId, {
-				documentType: documentForm.documentType as DocumentType,
+				documentType: documentForm.documentType,
 				documentUrl: documentForm.documentUrl,
 			});
 			toast.success("Document submitted for verification");
@@ -574,7 +574,7 @@ function PgOwnerProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 	const displayName = profile?.owner_full_name || "Owner";
 	// Use profile_photo_url if the backend ever returns it (migration 003 added the column)
 	const photoUrl =
-		(profile as (PgOwnerProfile & { profile_photo_url?: string | null }) | null)?.profile_photo_url ?? null;
+		(profile)?.profile_photo_url ?? null;
 
 	return (
 		<div className="mx-auto max-w-3xl px-4 py-8">

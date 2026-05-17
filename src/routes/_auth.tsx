@@ -1,7 +1,21 @@
 // src/routes/_auth.tsx
-import { createFileRoute, Outlet, Link, useNavigate, useLocation } from "@tanstack/react-router";
-import { Home, Search, Heart, Users, Bookmark, User, Building2, Menu, LogOut, ChevronDown, UserSearch, ShieldCheck, ShieldAlert } from "lucide-react";
-import { useState, useEffect } from "react";
+import { createFileRoute, Outlet, Link, useNavigate, useLocation, redirect } from "@tanstack/react-router";
+import {
+	Home,
+	Search,
+	Heart,
+	Users,
+	Bookmark,
+	User,
+	Building2,
+	Menu,
+	LogOut,
+	ChevronDown,
+	UserSearch,
+	ShieldCheck,
+	ShieldAlert,
+} from "lucide-react";
+import { useState } from "react";
 import { Button } from "#/components/ui/button";
 import {
 	DropdownMenu,
@@ -15,8 +29,30 @@ import { useAuth } from "#/context/AuthContext";
 import { NotificationBell } from "#/components/NotificationBell";
 import { UserAvatar } from "#/components/UserAvatar";
 import { cn } from "#/lib/utils";
+import { authMeQueryOptions } from "#/lib/queryOptions";
+import { queryKeys } from "#/lib/queryKeys";
 
 export const Route = createFileRoute("/_auth")({
+	beforeLoad: async ({ context, location }) => {
+		try {
+			const user = await context.queryClient.ensureQueryData(authMeQueryOptions());
+
+			return {
+				auth: {
+					user,
+					role: user.roles[0] ?? null,
+					isEmailVerified: user.isEmailVerified,
+				},
+			};
+		} catch {
+			context.queryClient.removeQueries({ queryKey: queryKeys.auth.me() });
+			throw redirect({
+				to: "/login",
+				search: { redirect: location.href },
+				replace: true,
+			});
+		}
+	},
 	component: AuthLayout,
 });
 
@@ -26,14 +62,6 @@ function AuthLayout() {
 	const location = useLocation();
 	const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-	// FIX: was calling navigate() during render which causes React warning.
-	// Move redirect into useEffect so it runs after render.
-	useEffect(() => {
-		if (!isLoading && !user) {
-			navigate({ to: "/login" });
-		}
-	}, [isLoading, user, navigate]);
-
 	if (isLoading) {
 		return (
 			<div className="min-h-screen flex items-center justify-center">
@@ -42,7 +70,6 @@ function AuthLayout() {
 		);
 	}
 
-	// While redirecting (user is null, not loading), show nothing
 	if (!user) {
 		return null;
 	}
@@ -108,7 +135,7 @@ function AuthLayout() {
 									variant="ghost"
 									className="gap-2 px-2">
 									<UserAvatar
-										name={user?.email || "User"}
+										name={user.email || "User"}
 										size="sm"
 									/>
 									<ChevronDown className="size-4 text-muted-foreground hidden sm:block" />
@@ -119,7 +146,7 @@ function AuthLayout() {
 								className="w-56">
 								<DropdownMenuLabel>
 									<div className="flex flex-col gap-1">
-										<span className="font-medium">{user?.email}</span>
+										<span className="font-medium">{user.email}</span>
 										<span className="text-xs text-muted-foreground capitalize">
 											{role === "pg_owner" ? "PG Owner" : "Student"}
 										</span>

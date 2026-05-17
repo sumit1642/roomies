@@ -1,6 +1,6 @@
 // src/routes/_auth/browse.tsx
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import { Button } from "#/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "#/components/ui/card";
@@ -10,10 +10,14 @@ import { Label } from "#/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "#/components/ui/select";
 import { EmptyState } from "#/components/EmptyState";
 import { StarRating } from "#/components/StarRating";
-import { searchListings, saveListing, unsaveListing, getSavedListings } from "#/lib/api/listings";
 import { formatCurrency } from "#/lib/format";
 import { queryKeys } from "#/lib/queryKeys";
-import { STALE } from "#/lib/queryClient";
+import {
+	listingFeedFiltersFromSearch,
+	listingsFeedQueryOptions,
+	savedListingsQueryOptions,
+	toggleSavedListingMutationOptions,
+} from "#/lib/queryOptions";
 import type { ListingSearchItem, ListingFilters } from "#/types";
 import { RoomType } from "#/types/enums";
 import { toast } from "#/components/ui/sonner";
@@ -31,7 +35,6 @@ import {
 	Zap,
 	LocateFixed,
 } from "lucide-react";
-import type { Cursor } from "#/types";
 import { useAuth } from "#/context/AuthContext";
 import { cn } from "#/lib/utils";
 import { ApiClientError } from "#/lib/api";
@@ -46,13 +49,30 @@ export const Route = createFileRoute("/_auth/browse")({
 		min_rent?: number;
 		max_rent?: number;
 		gender?: string;
-	} => ({
-		city: typeof search.city === "string" ? search.city : undefined,
-		room_type: typeof search.room_type === "string" ? search.room_type : undefined,
-		min_rent: typeof search.min_rent === "number" ? search.min_rent : undefined,
-		max_rent: typeof search.max_rent === "number" ? search.max_rent : undefined,
-		gender: typeof search.gender === "string" ? search.gender : undefined,
-	}),
+		lat?: number;
+		lng?: number;
+		radius?: number;
+	} => {
+		const readNumber = (value: unknown) => {
+			if (typeof value === "number" && Number.isFinite(value)) return value;
+			if (typeof value === "string" && value.trim() !== "") {
+				const parsed = Number(value);
+				return Number.isFinite(parsed) ? parsed : undefined;
+			}
+			return undefined;
+		};
+
+		return {
+			city: typeof search.city === "string" ? search.city : undefined,
+			room_type: typeof search.room_type === "string" ? search.room_type : undefined,
+			min_rent: readNumber(search.min_rent),
+			max_rent: readNumber(search.max_rent),
+			gender: typeof search.gender === "string" ? search.gender : undefined,
+			lat: readNumber(search.lat),
+			lng: readNumber(search.lng),
+			radius: readNumber(search.radius),
+		};
+	},
 });
 
 const NEAR_ME_RADIUS_KM = 5;
@@ -78,7 +98,7 @@ function CompatibilityBadge({ score, available }: { score: number; available: bo
 }
 
 function RentDeviationBadge({ deviation }: { deviation: number | null }) {
-	if (deviation === null || deviation === undefined) return null;
+	if (deviation === null) return null;
 
 	const isAbove = deviation > 0;
 	const isNear = Math.abs(deviation) <= 5;
@@ -102,6 +122,7 @@ function RentDeviationBadge({ deviation }: { deviation: number | null }) {
 
 function BrowseListingsPage() {
 	const searchParams = Route.useSearch();
+	const navigate = useNavigate({ from: "/browse" });
 	const { role, isEmailVerified } = useAuth();
 	const qc = useQueryClient();
 	const isStudent = role === "student";
@@ -110,36 +131,41 @@ function BrowseListingsPage() {
 	const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
 	const [isLocating, setIsLocating] = useState(false);
 
-	const [filters, setFilters] = useState<ListingFilters>({
+	const filters: ListingFilters = {
 		city: searchParams.city || "",
 		room_type: searchParams.room_type as ListingFilters["room_type"],
 		min_rent: searchParams.min_rent,
 		max_rent: searchParams.max_rent,
 		gender_preference: searchParams.gender as ListingFilters["gender_preference"],
-	});
+		lat: searchParams.lat,
+		lng: searchParams.lng,
+		radius: searchParams.radius,
+	};
 
 	const [tempFilters, setTempFilters] = useState<ListingFilters>(filters);
 
+	useEffect(() => {
+		setTempFilters(filters);
+	}, [
+		filters.city,
+		filters.room_type,
+		filters.min_rent,
+		filters.max_rent,
+		filters.gender_preference,
+		filters.lat,
+		filters.lng,
+		filters.radius,
+	]);
+
 	// ── Saved listings (shared cache with dashboard) ──────────────────────────
 	const { data: savedData } = useQuery({
-		queryKey: queryKeys.savedListings(),
-		queryFn: () => getSavedListings(),
-		staleTime: STALE.FEED,
+		...savedListingsQueryOptions(),
 		enabled: isStudent,
 	});
 	const savedIds = new Set((savedData?.items ?? []).map((l) => l.listing_id));
 
 	// ── Listings feed — infinite query for cursor-based pagination ────────────
-	const activeFiltersKey = {
-		city: filters.city || undefined,
-		roomType: filters.room_type,
-		minRent: filters.min_rent,
-		maxRent: filters.max_rent,
-		preferredGender: filters.gender_preference,
-		lat: filters.lat,
-		lng: filters.lng,
-		radius: filters.radius,
-	};
+	const activeFiltersKey = listingFeedFiltersFromSearch(filters);
 
 	const {
 		data: listingsPages,
@@ -147,33 +173,14 @@ function BrowseListingsPage() {
 		isFetchingNextPage,
 		fetchNextPage,
 		hasNextPage,
-	} = useInfiniteQuery({
-		queryKey: queryKeys.listings(activeFiltersKey),
-		queryFn: async ({ pageParam }: { pageParam: Cursor | undefined }) => {
-			return searchListings({
-				...activeFiltersKey,
-				limit: 20,
-				cursorTime: pageParam?.cursorTime,
-				cursorId: pageParam?.cursorId,
-			});
-		},
-		initialPageParam: undefined as Cursor | undefined,
-		getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
-		staleTime: STALE.FEED,
-	});
+	} = useInfiniteQuery(listingsFeedQueryOptions(activeFiltersKey));
 
 	const listings: ListingSearchItem[] = listingsPages?.pages.flatMap((p) => p.items) ?? [];
 	const nextCursor = listingsPages?.pages.at(-1)?.nextCursor ?? null;
 
 	// ── Save / unsave mutation ────────────────────────────────────────────────
 	const saveUnsaveMutation = useMutation({
-		mutationFn: async ({ listingId, isSaved }: { listingId: string; isSaved: boolean }) => {
-			if (isSaved) {
-				await unsaveListing(listingId);
-			} else {
-				await saveListing(listingId);
-			}
-		},
+		...toggleSavedListingMutationOptions(),
 		onMutate: ({ listingId }) => {
 			setSavingIds((prev) => new Set(prev).add(listingId));
 		},
@@ -212,14 +219,25 @@ function BrowseListingsPage() {
 	};
 
 	const handleApplyFilters = () => {
-		setFilters(tempFilters);
+		navigate({
+			search: {
+				city: tempFilters.city || undefined,
+				room_type: tempFilters.room_type,
+				min_rent: tempFilters.min_rent,
+				max_rent: tempFilters.max_rent,
+				gender: tempFilters.gender_preference,
+				lat: tempFilters.lat,
+				lng: tempFilters.lng,
+				radius: tempFilters.radius,
+			},
+		});
 		setShowFilters(false);
 	};
 
 	const handleClearFilters = () => {
 		const emptyFilters: ListingFilters = {};
 		setTempFilters(emptyFilters);
-		setFilters(emptyFilters);
+		navigate({ search: {} });
 		setShowFilters(false);
 	};
 
@@ -240,7 +258,13 @@ function BrowseListingsPage() {
 					radius: NEAR_ME_RADIUS_KM,
 				};
 				setTempFilters(locationFilters);
-				setFilters(locationFilters);
+				navigate({
+					search: {
+						lat: locationFilters.lat,
+						lng: locationFilters.lng,
+						radius: locationFilters.radius,
+					},
+				});
 				setIsLocating(false);
 				toast.success(`Showing listings within ${NEAR_ME_RADIUS_KM} km`);
 			},

@@ -296,7 +296,7 @@ function PropertiesPage() {
 			locality: property.locality || "",
 			pincode: property.pincode || "",
 			description: property.description || "",
-			propertyType: property.property_type || "pg",
+			propertyType: property.property_type,
 			houseRules: property.house_rules || "",
 			amenityIds: [], // amenities not returned in list view; user reselects on edit
 		});

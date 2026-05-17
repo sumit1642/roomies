@@ -129,8 +129,8 @@ async function silentRefresh(): Promise<boolean> {
 			}
 
 			const json = await res.json();
-			const data = json?.data as { accessToken?: string; refreshToken?: string } | undefined;
-			if (data?.accessToken && data?.refreshToken) {
+			const data = json.data as { accessToken?: string; refreshToken?: string } | undefined;
+			if (data && data.accessToken && data.refreshToken) {
 				tokenStore.setTokens(data.accessToken, data.refreshToken);
 				return true;
 			}
@@ -148,10 +148,27 @@ async function silentRefresh(): Promise<boolean> {
 
 // ─── Core fetch wrapper ────────────────────────────────────────────────────────
 export async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-	const headers: Record<string, string> = {
-		"Content-Type": "application/json",
-		...(options?.headers as Record<string, string>),
-	};
+	const headers: Record<string, string> = {};
+
+	// Only set Content-Type: application/json if body is NOT FormData
+	// (FormData sets its own Content-Type with boundary)
+	if (!(options?.body instanceof FormData)) {
+		headers["Content-Type"] = "application/json";
+	}
+
+	// Merge in any user-provided headers
+	const requestHeaders = options?.headers;
+	if (requestHeaders instanceof Headers) {
+		requestHeaders.forEach((value, key) => {
+			headers[key] = value;
+		});
+	} else if (Array.isArray(requestHeaders)) {
+		for (const [key, value] of requestHeaders) {
+			headers[key] = value;
+		}
+	} else if (requestHeaders) {
+		Object.assign(headers, requestHeaders);
+	}
 
 	if (IS_PROD) {
 		// Tell backend to return tokens in JSON body (bearer transport mode)

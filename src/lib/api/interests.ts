@@ -9,7 +9,6 @@ import type {
 	AcceptedInterestResponse,
 	Cursor,
 	RequestStatus,
-	LegacyApiResponse,
 } from "#/types";
 
 // Student: send interest
@@ -36,6 +35,11 @@ export async function getMyInterests(
 	const res = await apiFetch<ApiSuccess<PaginatedResponse<InterestRequestWithListing>>>(
 		`/interests/me${query ? `?${query}` : ""}`,
 	);
+	return res.data;
+}
+
+export async function getInterest(interestId: string): Promise<InterestRequest> {
+	const res = await apiFetch<ApiSuccess<InterestRequest>>(`/interests/${interestId}`);
 	return res.data;
 }
 
@@ -72,22 +76,3 @@ export async function updateInterestStatus(
 	);
 	return res.data;
 }
-
-function ok<T>(data?: T, message?: string): LegacyApiResponse<T> {
-	return { success: true, data, message };
-}
-
-function fail<T>(message: string): LegacyApiResponse<T> {
-	return { success: false, message };
-}
-
-export const interestsApi = {
-	async expressInterest(data: { listing_id: string; message?: string }): Promise<LegacyApiResponse<InterestRequest>> {
-		try {
-			const res = await sendInterest(data.listing_id, data.message);
-			return ok(res);
-		} catch {
-			return fail("Failed to express interest");
-		}
-	},
-};

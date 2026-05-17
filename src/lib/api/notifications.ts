@@ -1,14 +1,6 @@
 // src/lib/api/notifications.ts
 import { apiFetch } from "../api";
-import type {
-	ApiSuccess,
-	ApiMessage,
-	PaginatedResponse,
-	Notification,
-	UnreadCountResponse,
-	Cursor,
-	LegacyApiResponse,
-} from "#/types";
+import type { ApiSuccess, ApiMessage, PaginatedResponse, Notification, UnreadCountResponse, Cursor } from "#/types";
 
 // FIX: was using "filter" param, backend expects isRead=true/false
 export async function getNotifications(isRead?: boolean, cursor?: Cursor): Promise<PaginatedResponse<Notification>> {
@@ -45,45 +37,3 @@ export async function markAsRead(notificationIds?: string[]): Promise<void> {
 export async function markSingleAsRead(notificationId: string): Promise<void> {
 	await markAsRead([notificationId]);
 }
-
-function ok<T>(data?: T, message?: string): LegacyApiResponse<T> {
-	return { success: true, data, message };
-}
-
-function fail<T>(message: string): LegacyApiResponse<T> {
-	return { success: false, message };
-}
-
-export const notificationsApi = {
-	async getNotifications(): Promise<LegacyApiResponse<Notification[]>> {
-		try {
-			const res = await getNotifications();
-			return ok(res.items);
-		} catch {
-			return fail("Failed to load notifications");
-		}
-	},
-
-	async markAsRead(notificationId: string): Promise<LegacyApiResponse<null>> {
-		try {
-			await markSingleAsRead(notificationId);
-			return ok(null);
-		} catch {
-			return fail("Failed to mark notification as read");
-		}
-	},
-
-	async markAllAsRead(): Promise<LegacyApiResponse<null>> {
-		try {
-			await markAsRead();
-			return ok(null);
-		} catch {
-			return fail("Failed to mark all notifications as read");
-		}
-	},
-
-	// Backend has no delete endpoint - always fails gracefully
-	async deleteNotification(_notificationId: string): Promise<LegacyApiResponse<null>> {
-		return fail("Delete notification is not supported by current backend API");
-	},
-};

@@ -1,4 +1,4 @@
-import { apiFetch, tokenStore } from "../api";
+import { apiFetch } from "../api";
 import type {
 	ApiSuccess,
 	ApiMessage,
@@ -13,9 +13,6 @@ import type {
 	Gender,
 	ListingStatus,
 	BedType,
-	Listing,
-	ListingFilters,
-	LegacyApiResponse,
 	PreferencePair,
 } from "#/types";
 
@@ -187,33 +184,11 @@ export interface PhotoUploadResult {
 }
 
 export async function uploadListingPhoto(listingId: string, formData: FormData): Promise<PhotoUploadResult> {
-	const BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api/v1";
-	const IS_PROD = import.meta.env.PROD;
-
-	const headers: Record<string, string> = {};
-
-	if (IS_PROD) {
-		headers["X-Client-Transport"] = "bearer";
-		const at = tokenStore.getAccessToken();
-		if (at) {
-			headers["Authorization"] = `Bearer ${at}`;
-		}
-	}
-
-	const res = await fetch(`${BASE}/listings/${listingId}/photos`, {
+	const res = await apiFetch<ApiSuccess<PhotoUploadResult>>(`/listings/${listingId}/photos`, {
 		method: "POST",
-		headers,
-		credentials: IS_PROD ? "omit" : "include",
 		body: formData,
 	});
-
-	if (!res.ok) {
-		const body = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
-		throw new Error(body.message || "Failed to upload photo");
-	}
-
-	const json = (await res.json()) as ApiSuccess<PhotoUploadResult>;
-	return json.data;
+	return res.data;
 }
 
 export async function deleteListingPhoto(listingId: string, photoId: string): Promise<void> {
@@ -275,146 +250,3 @@ export async function updateListingPreferences(
 	});
 	return res.data;
 }
-
-function toLegacyListingFromSearch(item: ListingSearchItem): Listing {
-	return {
-		id: item.listing_id,
-		title: item.title,
-		room_type: item.room_type,
-		gender_preference: item.preferred_gender ?? "prefer_not_to_say",
-		rent_amount: item.rentPerMonth,
-		deposit_amount: item.depositAmount,
-		available_from: item.available_from,
-		status: item.status,
-		property: {
-			name: item.property_name ?? undefined,
-			city: item.city,
-		},
-	};
-}
-
-function toLegacyListingFromDetail(item: ListingDetail): Listing {
-	return {
-		id: item.listing_id,
-		title: item.title,
-		description: item.description,
-		property_id: item.property_id ?? undefined,
-		room_type: item.room_type,
-		gender_preference: item.preferred_gender ?? "prefer_not_to_say",
-		rent_amount: item.rentPerMonth,
-		deposit_amount: item.depositAmount,
-		available_from: item.available_from,
-		amenities: item.amenities.map((a) => a.name),
-		status: item.status,
-		property:
-			item.property ?
-				{
-					id: item.property.propertyId,
-					name: item.property.propertyName,
-					city: item.property.city,
-					address: item.property.addressLine,
-					rating: item.property.averageRating,
-					rating_count: item.property.ratingCount,
-				}
-			:	undefined,
-		owner: {
-			name: item.poster_name,
-		},
-	};
-}
-
-function ok<T>(data?: T, message?: string): LegacyApiResponse<T> {
-	return { success: true, data, message };
-}
-
-function fail<T>(message: string): LegacyApiResponse<T> {
-	return { success: false, message };
-}
-
-export const listingsApi = {
-	async browseListings(
-		params: ListingFilters & { page?: number; limit?: number },
-	): Promise<LegacyApiResponse<Listing[]>> {
-		try {
-			const res = await searchListings({
-				city: params.city,
-				roomType: params.room_type,
-				minRent: params.min_rent,
-				maxRent: params.max_rent,
-				preferredGender: params.gender_preference,
-				limit: params.limit,
-			});
-			return ok(res.items.map(toLegacyListingFromSearch));
-		} catch {
-			return fail("Failed to browse listings");
-		}
-	},
-
-	async getMyListings(): Promise<LegacyApiResponse<Listing[]>> {
-		try {
-			const res = await searchListings({ limit: 100 });
-			return ok(res.items.map(toLegacyListingFromSearch));
-		} catch {
-			return fail("Failed to fetch listings");
-		}
-	},
-
-	async getListingById(listingId: string): Promise<LegacyApiResponse<Listing>> {
-		try {
-			const res = await getListing(listingId);
-			return ok(toLegacyListingFromDetail(res));
-		} catch {
-			return fail("Listing not found");
-		}
-	},
-
-	async createListing(data: CreateListingInput): Promise<LegacyApiResponse<Listing>> {
-		try {
-			const res = await createListing(data);
-			return ok(toLegacyListingFromDetail(res));
-		} catch {
-			return fail("Failed to create listing");
-		}
-	},
-
-	async updateListing(listingId: string, data: Partial<CreateListingInput> & { status?: string }) {
-		try {
-			if (data.status) {
-				const status = data.status === "inactive" ? "deactivated" : data.status;
-				const res = await updateListingStatus(listingId, status as ListingStatus);
-				return ok(toLegacyListingFromDetail(res));
-			}
-			const res = await updateListing(listingId, data);
-			return ok(toLegacyListingFromDetail(res));
-		} catch {
-			return fail("Failed to update listing");
-		}
-	},
-
-	async deleteListing(listingId: string): Promise<LegacyApiResponse<null>> {
-		try {
-			await deleteListing(listingId);
-			return ok(null);
-		} catch {
-			return fail("Failed to delete listing");
-		}
-	},
-
-	async saveListing(listingId: string): Promise<LegacyApiResponse<null>> {
-		try {
-			await saveListing(listingId);
-			return ok(null);
-		} catch {
-			return fail("Failed to save listing");
-		}
-	},
-
-	async unsaveListing(listingId: string): Promise<LegacyApiResponse<null>> {
-		try {
-			await unsaveListing(listingId);
-			return ok(null);
-		} catch {
-			return fail("Failed to unsave listing");
-		}
-	},
-};

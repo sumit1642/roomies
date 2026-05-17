@@ -1,4 +1,4 @@
-import { apiFetch, tokenStore } from "../api";
+import { apiFetch } from "../api";
 import type {
 	ApiSuccess,
 	ApiMessage,
@@ -36,33 +36,15 @@ export async function updateStudentProfile(userId: string, data: UpdateStudentIn
 }
 
 async function uploadPhotoMultipart(url: string, file: File): Promise<{ profilePhotoUrl: string }> {
-	const BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000/api/v1";
-	const IS_PROD = import.meta.env.PROD;
-
-	const headers: Record<string, string> = {};
-	if (IS_PROD) {
-		headers["X-Client-Transport"] = "bearer";
-		const at = tokenStore.getAccessToken();
-		if (at) headers["Authorization"] = `Bearer ${at}`;
-	}
-
 	const formData = new FormData();
 	formData.append("photo", file);
 
-	const res = await fetch(`${BASE}${url}`, {
+	const res = await apiFetch<ApiSuccess<{ profilePhotoUrl: string }>>(url, {
 		method: "PUT",
-		headers,
-		credentials: IS_PROD ? "omit" : "include",
 		body: formData,
 	});
 
-	if (!res.ok) {
-		const body = await res.json().catch(() => ({ message: `HTTP ${res.status}` }));
-		throw new Error(body.message || "Failed to upload photo");
-	}
-
-	const json = (await res.json()) as ApiSuccess<{ profilePhotoUrl: string }>;
-	return json.data;
+	return res.data;
 }
 
 export async function uploadStudentPhoto(userId: string, file: File): Promise<{ profilePhotoUrl: string }> {

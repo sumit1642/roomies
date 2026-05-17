@@ -1,6 +1,7 @@
 // src/routes/_auth/_pgowner/listings.tsx
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "#/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "#/components/ui/card";
 import { Badge } from "#/components/ui/badge";
@@ -25,11 +26,26 @@ import { AmenityPicker } from "#/components/AmenityPicker";
 import { PreferencePicker } from "#/components/PreferencePicker";
 import { StarRating } from "#/components/StarRating";
 import { ListingAnalyticsDialog } from "#/components/ListingAnalyticsDialog";
-import { searchListings, createListing, updateListingStatus, deleteListing, renewListing } from "#/lib/api/listings";
+import {
+	searchListings,
+	createListing,
+	updateListing,
+	updateListingStatus,
+	deleteListing,
+	renewListing,
+	getListing,
+	getListingPhotos,
+	uploadListingPhoto,
+	deleteListingPhoto,
+	setCoverPhoto,
+	reorderPhotos,
+} from "#/lib/api/listings";
 import { getMyProperties } from "#/lib/api/properties";
 import { getListingInterests, updateInterestStatus } from "#/lib/api/interests";
 import { getStudentProfile, revealStudentContact } from "#/lib/api/profiles";
 import { formatCurrency } from "#/lib/format";
+import { queryKeys } from "#/lib/queryKeys";
+import { STALE } from "#/lib/queryClient";
 import { toast } from "#/components/ui/sonner";
 import {
 	Plus,
@@ -45,26 +61,28 @@ import {
 	GraduationCap,
 	Mail,
 	Phone,
-	Star,
 	ChevronRight,
 	Heart,
 	MessageSquare,
 	Shield,
 	User,
 	ExternalLink,
-	AlertCircle,
 	MessageCircle,
 	RefreshCw,
 	BarChart2,
+	Pencil,
+	ImagePlus,
+	ArrowUp,
+	ArrowDown,
 } from "lucide-react";
 import type {
 	ListingSearchItem,
+	ListingDetail,
+	ListingPhoto,
 	PropertyListItem,
 	InterestRequestWithStudent,
 	AcceptedInterestResponse,
 	PreferencePair,
-	StudentProfile,
-	StudentContactReveal,
 } from "#/types";
 import type { CreateListingInput } from "#/lib/api/listings";
 import { formatDistanceToNow } from "date-fns";
@@ -89,9 +107,10 @@ interface ListingFormProps {
 	onSubmit: (e: React.FormEvent) => void;
 	isSubmitting: boolean;
 	properties: PropertyListItem[];
+	submitLabel?: string;
 }
 
-function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }: ListingFormProps) {
+function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties, submitLabel = "Create Listing" }: ListingFormProps) {
 	return (
 		<form
 			onSubmit={onSubmit}
@@ -291,9 +310,9 @@ function ListingForm({ formData, onChange, onSubmit, isSubmitting, properties }:
 					{isSubmitting ?
 						<>
 							<Loader2 className="size-4 animate-spin mr-2" />
-							Creating...
+							Saving...
 						</>
-					:	"Create Listing"}
+					:	submitLabel}
 				</Button>
 			</DialogFooter>
 		</form>
@@ -378,33 +397,36 @@ function StudentDetailModal({
 	onDecline: (id: string) => Promise<void>;
 }) {
 	const [isActing, setIsActing] = useState<"accept" | "decline" | null>(null);
-	const [profile, setProfile] = useState<StudentProfile | null>(null);
-	const [contact, setContact] = useState<StudentContactReveal | null>(null);
-	const [isLoadingExtra, setIsLoadingExtra] = useState(false);
 	const [acceptResult, setAcceptResult] = useState<AcceptedInterestResponse | null>(null);
 
+	const studentUserId = interest?.student.userId ?? "";
+
+	const profileQuery = useQuery({
+		queryKey: queryKeys.studentProfile(studentUserId),
+		queryFn: () => getStudentProfile(studentUserId),
+		enabled: open && Boolean(studentUserId),
+		staleTime: STALE.PROFILE,
+	});
+
+	const contactQuery = useQuery({
+		queryKey: ["profile", "student", studentUserId, "contact-reveal"] as const,
+		queryFn: () => revealStudentContact(studentUserId),
+		enabled: open && Boolean(studentUserId),
+		staleTime: STALE.TRANSACTIONAL,
+	});
+
+	const profile = profileQuery.data ?? null;
+	const contact = contactQuery.data ?? null;
+	const isLoadingExtra = profileQuery.isPending || contactQuery.isPending;
+
 	useEffect(() => {
-		if (!open || !interest) return;
-		// Reset accept result when modal opens for a new interest
-		setAcceptResult(null);
-		setProfile(null);
-		setContact(null);
-		setIsLoadingExtra(true);
-		Promise.all([
-			getStudentProfile(interest.student.userId).catch(() => null),
-			revealStudentContact(interest.student.userId).catch(() => null),
-		])
-			.then(([p, c]) => {
-				setProfile(p);
-				setContact(c);
-			})
-			.finally(() => setIsLoadingExtra(false));
-	}, [open, interest?.student.userId]);
+		if (open) setAcceptResult(null);
+	}, [open, interest?.interestRequestId]);
 
 	if (!interest) return null;
 
 	const { student } = interest;
-	const initial = student.fullName?.charAt(0)?.toUpperCase() ?? "?";
+	const initial = student.fullName.charAt(0).toUpperCase() || "?";
 
 	const handleAccept = async () => {
 		setIsActing("accept");
@@ -653,35 +675,41 @@ function InterestsPanelDialog({
 	onClose: () => void;
 	onDataChange: () => void;
 }) {
-	const [interests, setInterests] = useState<InterestRequestWithStudent[]>([]);
-	const [isLoading, setIsLoading] = useState(false);
+	const qc = useQueryClient();
 	const [selectedInterest, setSelectedInterest] = useState<InterestRequestWithStudent | null>(null);
 	const [activeTab, setActiveTab] = useState<"pending" | "accepted">("pending");
 
-	useEffect(() => {
-		if (open) {
-			fetchInterests();
-		}
-	}, [open, listingId, activeTab]);
+	const interestsQuery = useQuery({
+		queryKey: queryKeys.listingInterests(listingId, activeTab),
+		queryFn: () => getListingInterests(listingId, activeTab),
+		enabled: open && Boolean(listingId),
+		staleTime: STALE.TRANSACTIONAL,
+	});
 
-	const fetchInterests = async () => {
-		setIsLoading(true);
-		try {
-			const res = await getListingInterests(listingId, activeTab as "pending" | "accepted");
-			setInterests(res.items);
-		} catch {
-			toast.error("Failed to load interest requests");
-		} finally {
-			setIsLoading(false);
-		}
-	};
+	const interests = interestsQuery.data?.items ?? [];
+	const isLoading = interestsQuery.isPending;
+
+	const acceptMutation = useMutation({
+		mutationFn: (interestId: string) => updateInterestStatus(interestId, "accepted"),
+		onSuccess: async () => {
+			await Promise.all([
+				qc.invalidateQueries({ queryKey: queryKeys.listingInterests(listingId, "pending") }),
+				qc.invalidateQueries({ queryKey: queryKeys.listingInterests(listingId, "accepted") }),
+			]);
+			onDataChange();
+		},
+	});
+
+	const declineMutation = useMutation({
+		mutationFn: (interestId: string) => updateInterestStatus(interestId, "declined"),
+		onSuccess: async () => {
+			await qc.invalidateQueries({ queryKey: queryKeys.listingInterests(listingId, activeTab) });
+		},
+	});
 
 	const handleAccept = async (interestId: string): Promise<AcceptedInterestResponse> => {
 		try {
-			const result = await updateInterestStatus(interestId, "accepted");
-			// Remove from pending list
-			setInterests((prev) => prev.filter((i) => i.interestRequestId !== interestId));
-			onDataChange();
+			const result = await acceptMutation.mutateAsync(interestId);
 			// The result may be AcceptedInterestResponse or InterestRequest
 			// When status = "accepted", backend returns AcceptedInterestResponse
 			return result as AcceptedInterestResponse;
@@ -701,9 +729,8 @@ function InterestsPanelDialog({
 
 	const handleDecline = async (interestId: string) => {
 		try {
-			await updateInterestStatus(interestId, "declined");
+			await declineMutation.mutateAsync(interestId);
 			toast.success("Interest declined");
-			setInterests((prev) => prev.filter((i) => i.interestRequestId !== interestId));
 		} catch {
 			toast.error("Failed to decline");
 		}
@@ -770,7 +797,7 @@ function InterestsPanelDialog({
 													/>
 												)}
 												<AvatarFallback className="bg-primary/10 text-primary font-semibold">
-													{interest.student.fullName?.charAt(0)?.toUpperCase() ?? "?"}
+													{interest.student.fullName.charAt(0).toUpperCase() || "?"}
 												</AvatarFallback>
 											</Avatar>
 											<div className="flex-1 min-w-0">
@@ -815,6 +842,282 @@ function InterestsPanelDialog({
 	);
 }
 
+function formDataFromListing(listing: ListingDetail): ListingFormData {
+	return {
+		propertyId: listing.property_id ?? "",
+		listingType: listing.listing_type,
+		title: listing.title,
+		description: listing.description ?? "",
+		roomType: listing.room_type,
+		bedType: listing.bed_type ?? undefined,
+		totalCapacity: listing.total_capacity,
+		rentPerMonth: listing.rentPerMonth,
+		depositAmount: listing.depositAmount,
+		preferredGender: listing.preferred_gender ?? undefined,
+		availableFrom: listing.available_from,
+		availableUntil: listing.available_until ?? undefined,
+		addressLine: listing.address_line ?? undefined,
+		city: listing.city,
+		locality: listing.locality ?? undefined,
+		landmark: listing.landmark ?? undefined,
+		pincode: listing.pincode ?? undefined,
+		latitude: listing.latitude ?? undefined,
+		longitude: listing.longitude ?? undefined,
+		rentIncludesUtilities: listing.rent_includes_utilities,
+		isNegotiable: listing.is_negotiable,
+		amenityIds: listing.amenities.map((amenity) => amenity.amenityId),
+		preferences: listing.preferences,
+	};
+}
+
+function ManageListingDialog({
+	listingId,
+	open,
+	properties,
+	onClose,
+	onSaved,
+}: {
+	listingId: string;
+	open: boolean;
+	properties: PropertyListItem[];
+	onClose: () => void;
+	onSaved: () => void;
+}) {
+	const [formData, setFormData] = useState<ListingFormData | null>(null);
+	const [photos, setPhotos] = useState<ListingPhoto[]>([]);
+	const [isLoading, setIsLoading] = useState(true);
+	const [isSaving, setIsSaving] = useState(false);
+	const [photoBusyId, setPhotoBusyId] = useState<string | null>(null);
+	const [isUploading, setIsUploading] = useState(false);
+
+	const loadListing = async () => {
+		setIsLoading(true);
+		try {
+			const [detail, listingPhotos] = await Promise.all([getListing(listingId), getListingPhotosSafe(listingId)]);
+			setFormData(formDataFromListing(detail));
+			setPhotos(listingPhotos);
+		} catch {
+			toast.error("Failed to load listing");
+			onClose();
+		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	useEffect(() => {
+		if (open) void loadListing();
+	}, [open, listingId]);
+
+	const handleSubmit = async (e: React.FormEvent) => {
+		e.preventDefault();
+		if (!formData) return;
+		setIsSaving(true);
+		try {
+			await updateListing(listingId, {
+				...(formData as CreateListingInput),
+				depositAmount: formData.depositAmount ?? 0,
+				rentIncludesUtilities: formData.rentIncludesUtilities ?? false,
+				isNegotiable: formData.isNegotiable ?? false,
+			});
+			toast.success("Listing updated");
+			onSaved();
+		} catch (err) {
+			if (err instanceof ApiClientError) toast.error(err.body.message || "Failed to update listing");
+			else toast.error("Failed to update listing");
+		} finally {
+			setIsSaving(false);
+		}
+	};
+
+	const refreshPhotos = async () => setPhotos(await getListingPhotosSafe(listingId));
+
+	const handleUpload = async (file: File | null) => {
+		if (!file) return;
+		const form = new FormData();
+		form.append("photo", file);
+		setIsUploading(true);
+		try {
+			await uploadListingPhoto(listingId, form);
+			toast.success("Photo uploaded");
+			await refreshPhotos();
+		} catch (err) {
+			if (err instanceof ApiClientError) toast.error(err.body.message || "Failed to upload photo");
+			else toast.error("Failed to upload photo");
+		} finally {
+			setIsUploading(false);
+		}
+	};
+
+	const handleDeletePhoto = async (photoId: string) => {
+		setPhotoBusyId(photoId);
+		try {
+			await deleteListingPhoto(listingId, photoId);
+			await refreshPhotos();
+			toast.success("Photo deleted");
+		} catch {
+			toast.error("Failed to delete photo");
+		} finally {
+			setPhotoBusyId(null);
+		}
+	};
+
+	const handleCover = async (photoId: string) => {
+		setPhotoBusyId(photoId);
+		try {
+			await setCoverPhoto(listingId, photoId);
+			await refreshPhotos();
+			toast.success("Cover photo updated");
+		} catch {
+			toast.error("Failed to update cover photo");
+		} finally {
+			setPhotoBusyId(null);
+		}
+	};
+
+	const handleMovePhoto = async (index: number, direction: -1 | 1) => {
+		const targetIndex = index + direction;
+		if (targetIndex < 0 || targetIndex >= photos.length) return;
+		const next = [...photos];
+		[next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+		const payload = next.map((photo, displayOrder) => ({ photoId: photo.photoId, displayOrder }));
+		setPhotos(next);
+		try {
+			await reorderPhotos(listingId, payload);
+			await refreshPhotos();
+		} catch {
+			toast.error("Failed to reorder photos");
+			await refreshPhotos();
+		}
+	};
+
+	return (
+		<Dialog
+			open={open}
+			onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+			<DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+				<DialogHeader>
+					<DialogTitle>Manage Listing</DialogTitle>
+					<DialogDescription>Edit listing details and photos</DialogDescription>
+				</DialogHeader>
+				{isLoading || !formData ?
+					<div className="flex justify-center py-12">
+						<Loader2 className="size-6 animate-spin text-muted-foreground" />
+					</div>
+				:	<div className="space-y-6">
+						<ListingForm
+							formData={formData}
+							onChange={setFormData}
+							onSubmit={handleSubmit}
+							isSubmitting={isSaving}
+							properties={properties}
+							submitLabel="Save Changes"
+						/>
+						<Separator />
+						<div className="space-y-3">
+							<div className="flex items-center justify-between gap-3">
+								<div>
+									<h3 className="font-semibold">Photos</h3>
+									<p className="text-xs text-muted-foreground">Upload up to five photos.</p>
+								</div>
+								<label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+									{isUploading ?
+										<Loader2 className="size-4 animate-spin" />
+									:	<ImagePlus className="size-4" />}
+									Upload
+									<input
+										type="file"
+										accept="image/*"
+										className="sr-only"
+										disabled={isUploading}
+										onChange={(e) => {
+											void handleUpload(e.target.files?.[0] ?? null);
+											e.currentTarget.value = "";
+										}}
+									/>
+								</label>
+							</div>
+							{photos.length === 0 ?
+								<p className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+									No photos uploaded yet.
+								</p>
+							:	<div className="grid gap-3 sm:grid-cols-2">
+									{photos.map((photo, index) => (
+										<div
+											key={photo.photoId}
+											className="overflow-hidden rounded-lg border">
+											<div className="aspect-video bg-muted">
+												{photo.photoUrl.startsWith("processing:") ?
+													<div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+														Processing
+													</div>
+												:	<img
+														src={photo.photoUrl}
+														alt="Listing"
+														className="h-full w-full object-cover"
+													/>
+												}
+											</div>
+											<div className="flex items-center justify-between gap-1 p-2">
+												<Badge variant={photo.isCover ? "success" : "secondary"}>
+													{photo.isCover ? "Cover" : `Photo ${index + 1}`}
+												</Badge>
+												<div className="flex items-center gap-1">
+													<Button
+														variant="ghost"
+														size="icon"
+														className="size-8"
+														disabled={index === 0}
+														onClick={() => handleMovePhoto(index, -1)}>
+														<ArrowUp className="size-4" />
+													</Button>
+													<Button
+														variant="ghost"
+														size="icon"
+														className="size-8"
+														disabled={index === photos.length - 1}
+														onClick={() => handleMovePhoto(index, 1)}>
+														<ArrowDown className="size-4" />
+													</Button>
+													<Button
+														variant="ghost"
+														size="sm"
+														className="h-8 px-2 text-xs"
+														disabled={photo.isCover || photoBusyId === photo.photoId}
+														onClick={() => handleCover(photo.photoId)}>
+														Cover
+													</Button>
+													<Button
+														variant="ghost"
+														size="icon"
+														className="size-8 text-destructive"
+														disabled={photoBusyId === photo.photoId}
+														onClick={() => handleDeletePhoto(photo.photoId)}>
+														{photoBusyId === photo.photoId ?
+															<Loader2 className="size-4 animate-spin" />
+														:	<Trash2 className="size-4" />}
+													</Button>
+												</div>
+											</div>
+										</div>
+									))}
+								</div>
+							}
+						</div>
+					</div>
+				}
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+async function getListingPhotosSafe(listingId: string): Promise<ListingPhoto[]> {
+	try {
+		return await getListingPhotos(listingId);
+	} catch {
+		return [];
+	}
+}
+
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 function ListingsPage() {
 	const { property_id } = useSearch({ from: "/_auth/_pgowner/listings" });
@@ -830,6 +1133,7 @@ function ListingsPage() {
 		listingId: string;
 		listingTitle: string;
 	} | null>(null);
+	const [manageListingId, setManageListingId] = useState<string | null>(null);
 	const [deleteTarget, setDeleteTarget] = useState<ListingSearchItem | null>(null);
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [toggleLoading, setToggleLoading] = useState<string | null>(null);
@@ -891,7 +1195,7 @@ function ListingsPage() {
 			toast.error("Please fill in all required fields");
 			return;
 		}
-		if (formData.rentPerMonth === undefined || formData.rentPerMonth === null) {
+		if (formData.rentPerMonth === undefined) {
 			toast.error("Monthly rent is required");
 			return;
 		}
@@ -945,7 +1249,7 @@ function ListingsPage() {
 
 		setToggleLoading(listing.listing_id);
 		try {
-			await updateListingStatus(listing.listing_id, newStatus as "active" | "deactivated" | "filled");
+			await updateListingStatus(listing.listing_id, newStatus);
 			toast.success(`Listing ${newStatus === "active" ? "activated" : "deactivated"}`);
 			fetchData();
 		} catch (err: unknown) {
@@ -1089,6 +1393,15 @@ function ListingsPage() {
 									<Separator />
 
 									<div className="flex items-center gap-1.5 flex-wrap">
+										<Button
+											variant="outline"
+											size="sm"
+											className="h-8 text-xs flex-1 min-w-25"
+											onClick={() => setManageListingId(listing.listing_id)}>
+											<Pencil className="mr-1.5 h-3.5 w-3.5" />
+											Manage
+										</Button>
+
 										{/* View Interests */}
 										<Button
 											variant="outline"
@@ -1197,6 +1510,16 @@ function ListingsPage() {
 					listingTitle={analyticsState.listingTitle}
 					open={true}
 					onClose={() => setAnalyticsState(null)}
+				/>
+			)}
+
+			{manageListingId && (
+				<ManageListingDialog
+					listingId={manageListingId}
+					open={true}
+					properties={properties}
+					onClose={() => setManageListingId(null)}
+					onSaved={fetchData}
 				/>
 			)}
 		</div>

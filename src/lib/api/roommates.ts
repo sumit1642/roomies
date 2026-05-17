@@ -6,15 +6,10 @@ import type {
 	PaginatedResponse,
 	RoommateProfile,
 	RoommateProfileUpdate,
-	Gender,
 } from "#/types";
 
 export interface RoommateFeedParams {
-	gender?: Gender;
-	/** Comma-separated amenity IDs to filter by */
-	amenityIds?: string[];
-	/** Sort: "compatibility" | "recent" */
-	sortBy?: "compatibility" | "recent";
+	city?: string;
 	cursorTime?: string;
 	cursorId?: string;
 	limit?: number;
@@ -27,9 +22,7 @@ export interface RoommateFeedParams {
  */
 export async function getRoommateFeed(params?: RoommateFeedParams): Promise<PaginatedResponse<RoommateProfile>> {
 	const searchParams = new URLSearchParams();
-	if (params?.gender) searchParams.set("gender", params.gender);
-	if (params?.amenityIds?.length) searchParams.set("amenityIds", params.amenityIds.join(","));
-	if (params?.sortBy) searchParams.set("sortBy", params.sortBy);
+	if (params?.city) searchParams.set("city", params.city);
 	if (params?.cursorTime) searchParams.set("cursorTime", params.cursorTime);
 	if (params?.cursorId) searchParams.set("cursorId", params.cursorId);
 	if (params?.limit !== undefined) searchParams.set("limit", String(params.limit));

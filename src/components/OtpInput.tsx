@@ -1,4 +1,5 @@
-import { useRef, useState, type KeyboardEvent, type ClipboardEvent } from "react";
+import { useRef, useState   } from "react";
+import type {KeyboardEvent, ClipboardEvent} from "react";
 import { cn } from "#/lib/utils";
 
 interface OtpInputProps {

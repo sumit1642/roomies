@@ -107,7 +107,7 @@ function CompatibilityMeter({ score, available }: { score: number; available: bo
 function ListingDetailPage() {
 	const { id } = Route.useParams();
 	const navigate = useNavigate();
-	const { user, role, isEmailVerified } = useAuth();
+	const { role, isEmailVerified } = useAuth();
 	const qc = useQueryClient();
 	const [interestSent, setInterestSent] = useState(false);
 	const [isSendingInterest, setIsSendingInterest] = useState(false);
@@ -122,7 +122,12 @@ function ListingDetailPage() {
 		queryFn: () => getListing(id),
 		staleTime: STALE.FEED,
 		throwOnError: false,
-		meta: { onError: () => { toast.error("Listing not found"); navigate({ to: "/browse", search: {} }); } },
+		meta: {
+			onError: () => {
+				toast.error("Listing not found");
+				navigate({ to: "/browse", search: {} });
+			},
+		},
 	});
 
 	// ── Property ratings ──────────────────────────────────────────────────────
@@ -141,10 +146,7 @@ function ListingDetailPage() {
 		staleTime: STALE.FEED,
 		enabled: isStudent,
 	});
-	const isSaved = useMemo(
-		() => (savedData?.items ?? []).some((s) => s.listing_id === id),
-		[savedData, id],
-	);
+	const isSaved = useMemo(() => (savedData?.items ?? []).some((s) => s.listing_id === id), [savedData, id]);
 
 	// ── Save/unsave mutation — invalidates shared savedListings cache ──────────
 	const saveUnsaveMutation = useMutation({
@@ -229,32 +231,30 @@ function ListingDetailPage() {
 				{/* Main Content */}
 				<div className="lg:col-span-2 space-y-6">
 					{/* Photo Gallery */}
-					{listing.photos &&
-						listing.photos.filter((p) => !p.photoUrl.startsWith("processing:")).length > 0 && (
-							<div className="grid gap-2 grid-cols-2">
-								{listing.photos
-									.filter((p) => !p.photoUrl.startsWith("processing:"))
-									.slice(0, 4)
-									.map((photo, idx) => (
-										<img
-											key={photo.photoId}
-											src={photo.photoUrl}
-											alt={`${listing.title} photo ${idx + 1}`}
-											className={cn(
-												"rounded-xl object-cover w-full",
-												(
-													idx === 0 &&
-														listing.photos.filter(
-															(p) => !p.photoUrl.startsWith("processing:"),
-														).length > 1
-												) ?
-													"row-span-2 aspect-square"
-												:	"aspect-video",
-											)}
-										/>
-									))}
-							</div>
-						)}
+					{listing.photos.filter((p) => !p.photoUrl.startsWith("processing:")).length > 0 && (
+						<div className="grid gap-2 grid-cols-2">
+							{listing.photos
+								.filter((p) => !p.photoUrl.startsWith("processing:"))
+								.slice(0, 4)
+								.map((photo, idx) => (
+									<img
+										key={photo.photoId}
+										src={photo.photoUrl}
+										alt={`${listing.title} photo ${idx + 1}`}
+										className={cn(
+											"rounded-xl object-cover w-full",
+											(
+												idx === 0 &&
+													listing.photos.filter((p) => !p.photoUrl.startsWith("processing:"))
+														.length > 1
+											) ?
+												"row-span-2 aspect-square"
+											:	"aspect-video",
+										)}
+									/>
+								))}
+						</div>
+					)}
 
 					{/* Header Card */}
 					<Card>
@@ -364,7 +364,7 @@ function ListingDetailPage() {
 					)}
 
 					{/* Amenities */}
-					{listing.amenities && listing.amenities.length > 0 && (
+					{listing.amenities.length > 0 && (
 						<Card>
 							<CardHeader>
 								<CardTitle>Amenities</CardTitle>
@@ -387,7 +387,7 @@ function ListingDetailPage() {
 					)}
 
 					{/* Preferences */}
-					{listing.preferences && listing.preferences.length > 0 && (
+					{listing.preferences.length > 0 && (
 						<Card>
 							<CardHeader>
 								<CardTitle>Tenant Preferences</CardTitle>
@@ -411,7 +411,7 @@ function ListingDetailPage() {
 					)}
 
 					{/* OSM Map — shown when listing has coordinates */}
-					{(listing.latitude && listing.longitude) && (
+					{listing.latitude && listing.longitude && (
 						<Card className="overflow-hidden">
 							<CardHeader className="pb-2">
 								<CardTitle className="flex items-center gap-2 text-base">

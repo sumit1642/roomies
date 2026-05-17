@@ -8,10 +8,8 @@ import { cn } from "#/lib/utils";
 
 export const Route = createFileRoute("/_auth/_admin")({
 	beforeLoad: ({ context }) => {
-		// context.auth is populated by the /_auth layout beforeLoad
-		const role = (context as { auth?: { role?: string } }).auth?.role;
-		if (role !== "admin") {
-			throw redirect({ to: "/dashboard" });
+		if (context.auth.role !== "admin") {
+			throw redirect({ to: "/dashboard", replace: true });
 		}
 	},
 	component: AdminLayout,
@@ -19,12 +17,12 @@ export const Route = createFileRoute("/_auth/_admin")({
 
 const NAV_LINKS = [
 	{
-		to: "/admin/verification",
+		to: "/verification",
 		label: "Verification Queue",
 		icon: ClipboardCheck,
 	},
 	{
-		to: "/admin/reports",
+		to: "/reports",
 		label: "Report Queue",
 		icon: Flag,
 	},

@@ -1,7 +1,7 @@
 // src/routes/_auth/connections.tsx
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useInfiniteQuery, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "#/lib/queryKeys";
 import { STALE } from "#/lib/queryClient";
 import { Button } from "#/components/ui/button";
@@ -9,24 +9,21 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "#/com
 import { Badge } from "#/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "#/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "#/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "#/components/ui/select";
 import { Separator } from "#/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "#/components/ui/avatar";
 import { Textarea } from "#/components/ui/textarea";
 import { Label } from "#/components/ui/label";
 import { UserAvatar } from "#/components/UserAvatar";
 import { EmptyState } from "#/components/EmptyState";
+import { LoadMoreButton } from "#/components/LoadMoreButton";
 import { StarRating } from "#/components/StarRating";
-import { getMyConnections, confirmConnection, getConnection } from "#/lib/api/connections";
+import { confirmConnection, getConnection } from "#/lib/api/connections";
 import { getStudentProfile, revealStudentContact } from "#/lib/api/profiles";
-import { getConnectionRatings, submitRating } from "#/lib/api/ratings";
+import { getConnectionRatings, reportRating, submitRating } from "#/lib/api/ratings";
+import { connectionsInfiniteQueryOptions } from "#/lib/queryOptions";
 import { useAuth } from "#/context/AuthContext";
-import type {
-	ConnectionListItem,
-	ConnectionDetail,
-	StudentProfile,
-	StudentContactReveal,
-	ConnectionRatings,
-} from "#/types";
+import type { ConnectionListItem, ConnectionDetail, Cursor, Rating, ReportReason } from "#/types";
 import { toast } from "#/components/ui/sonner";
 import {
 	Users,
@@ -46,7 +43,7 @@ import {
 	Calendar,
 	User,
 	ExternalLink,
-	X,
+	Flag,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { cn } from "#/lib/utils";
@@ -71,26 +68,32 @@ function StudentProfileModal({
 	open: boolean;
 	onClose: () => void;
 }) {
-	const [profile, setProfile] = useState<StudentProfile | null>(null);
-	const [contact, setContact] = useState<StudentContactReveal | null>(null);
-	const [isLoading, setIsLoading] = useState(false);
-	const [ratings, setRatings] = useState<ConnectionRatings | null>(null);
+	const profileQuery = useQuery({
+		queryKey: queryKeys.studentProfile(studentId),
+		queryFn: () => getStudentProfile(studentId),
+		enabled: open && Boolean(studentId),
+		staleTime: STALE.PROFILE,
+	});
 
-	useEffect(() => {
-		if (!open || !studentId) return;
-		setIsLoading(true);
-		Promise.all([
-			getStudentProfile(studentId).catch(() => null),
-			revealStudentContact(studentId).catch(() => null),
-			getConnectionRatings(connectionId).catch(() => null),
-		])
-			.then(([profileData, contactData, ratingsData]) => {
-				setProfile(profileData);
-				setContact(contactData);
-				setRatings(ratingsData);
-			})
-			.finally(() => setIsLoading(false));
-	}, [open, studentId, connectionId]);
+	const contactQuery = useQuery({
+		queryKey: ["profile", "student", studentId, "contact-reveal"] as const,
+		queryFn: () => revealStudentContact(studentId),
+		enabled: open && Boolean(studentId),
+		staleTime: STALE.TRANSACTIONAL,
+	});
+
+	const ratingsQuery = useQuery({
+		queryKey: queryKeys.connectionRatings(connectionId),
+		queryFn: () => getConnectionRatings(connectionId),
+		enabled: open && Boolean(connectionId),
+		staleTime: STALE.TRANSACTIONAL,
+	});
+
+	const profile = profileQuery.data ?? null;
+	const contact = contactQuery.data ?? null;
+	const ratings = ratingsQuery.data ?? null;
+	const isLoading = profileQuery.isPending || contactQuery.isPending || ratingsQuery.isPending;
+	const [reportTarget, setReportTarget] = useState<Rating | null>(null);
 
 	const getInitials = (name: string) => {
 		const parts = name.trim().split(/\s+/);
@@ -304,6 +307,14 @@ function StudentProfileModal({
 											{r.comment && (
 												<p className="text-sm italic text-muted-foreground">"{r.comment}"</p>
 											)}
+											<Button
+												variant="ghost"
+												size="sm"
+												className="h-7 px-2 text-xs text-muted-foreground hover:text-destructive"
+												onClick={() => setReportTarget(r)}>
+												<Flag className="mr-1 size-3" />
+												Report rating
+											</Button>
 										</div>
 									))}
 								</div>
@@ -315,6 +326,11 @@ function StudentProfileModal({
 						<p className="text-sm text-muted-foreground">Failed to load student profile</p>
 					</div>
 				}
+				<ReportRatingDialog
+					rating={reportTarget}
+					open={!!reportTarget}
+					onClose={() => setReportTarget(null)}
+				/>
 			</DialogContent>
 		</Dialog>
 	);
@@ -332,6 +348,100 @@ function DetailItem({ icon: Icon, label, value }: { icon: typeof User; label: st
 	);
 }
 
+function ReportRatingDialog({
+	rating,
+	open,
+	onClose,
+}: {
+	rating: Rating | null;
+	open: boolean;
+	onClose: () => void;
+}) {
+	const [reason, setReason] = useState<ReportReason>("other");
+	const [explanation, setExplanation] = useState("");
+	const [isSubmitting, setIsSubmitting] = useState(false);
+
+	const handleSubmit = async () => {
+		if (!rating) return;
+		setIsSubmitting(true);
+		try {
+			await reportRating(rating.ratingId, {
+				reason,
+				explanation: explanation.trim() || undefined,
+			});
+			toast.success("Rating report submitted");
+			setExplanation("");
+			setReason("other");
+			onClose();
+		} catch (err) {
+			if (err instanceof ApiClientError) {
+				toast.error(err.body.message || "Failed to report rating");
+			} else {
+				toast.error("Failed to report rating");
+			}
+		} finally {
+			setIsSubmitting(false);
+		}
+	};
+
+	return (
+		<Dialog
+			open={open}
+			onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+			<DialogContent className="max-w-md">
+				<DialogHeader>
+					<DialogTitle>Report Rating</DialogTitle>
+					<DialogDescription>Report fake, abusive, or conflicted ratings for admin review.</DialogDescription>
+				</DialogHeader>
+				<div className="space-y-4">
+					<div className="space-y-2">
+						<Label>Reason</Label>
+						<Select
+							value={reason}
+							onValueChange={(value) => setReason(value as ReportReason)}>
+							<SelectTrigger>
+								<SelectValue />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="fake">Fake / fabricated</SelectItem>
+								<SelectItem value="abusive">Abusive content</SelectItem>
+								<SelectItem value="conflict_of_interest">Conflict of interest</SelectItem>
+								<SelectItem value="other">Other</SelectItem>
+							</SelectContent>
+						</Select>
+					</div>
+					<div className="space-y-2">
+						<Label>Explanation</Label>
+						<Textarea
+							value={explanation}
+							onChange={(e) => setExplanation(e.target.value)}
+							rows={3}
+							maxLength={2000}
+							placeholder="Add context for the admin reviewer"
+						/>
+					</div>
+					<div className="flex gap-3">
+						<Button
+							variant="outline"
+							className="flex-1"
+							onClick={onClose}
+							disabled={isSubmitting}>
+							Cancel
+						</Button>
+						<Button
+							className="flex-1"
+							onClick={handleSubmit}
+							disabled={isSubmitting}>
+							{isSubmitting && <Loader2 className="mr-2 size-4 animate-spin" />}
+							Submit Report
+						</Button>
+					</div>
+				</div>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
 // ─── Rate Connection Dialog ────────────────────────────────────────────────────
 function RateConnectionDialog({
 	connection,
@@ -344,7 +454,6 @@ function RateConnectionDialog({
 	onClose: () => void;
 	onRated: () => void;
 }) {
-	const { user } = useAuth();
 	const [overallScore, setOverallScore] = useState(0);
 	const [cleanlinessScore, setCleanlinessScore] = useState(0);
 	const [communicationScore, setCommunicationScore] = useState(0);
@@ -805,7 +914,7 @@ function ConnectionDetailView({
 
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 function ConnectionsPage() {
-	const { user, role } = useAuth();
+	const { role } = useAuth();
 	const qc = useQueryClient();
 	const [activeTab, setActiveTab] = useState<TabFilter>("all");
 	const [processingId, setProcessingId] = useState<string | null>(null);
@@ -827,12 +936,16 @@ function ConnectionsPage() {
 	const isOwner = role === "pg_owner";
 
 	// ── Connections list ────────────────────────────────────────────────────
-	const { data: connectionsData, isLoading } = useQuery({
-		queryKey: queryKeys.connections(),
-		queryFn: () => getMyConnections(),
-		staleTime: STALE.TRANSACTIONAL,
+	const {
+		data: connectionsData,
+		isFetchingNextPage,
+		fetchNextPage,
+	} = useInfiniteQuery({
+		...connectionsInfiniteQueryOptions(),
 	});
-	const connections: ConnectionListItem[] = connectionsData?.items ?? [];
+	const connections: ConnectionListItem[] = connectionsData?.pages.flatMap((p) => p.items) ?? [];
+	const lastPage = connectionsData?.pages[connectionsData.pages.length - 1];
+	const nextCursor: Cursor | null = lastPage ? lastPage.nextCursor : null;
 
 	// ── Connection detail ───────────────────────────────────────────────────
 	const { data: connectionDetail, isLoading: isLoadingDetail } = useQuery({
@@ -866,6 +979,10 @@ function ConnectionsPage() {
 		setStudentProfileState({ studentId, connectionId });
 	};
 
+	const handleLoadMore = async (_cursor: Cursor) => {
+		await fetchNextPage();
+	};
+
 	const filteredConnections = connections.filter((conn) => {
 		if (activeTab === "pending") return conn.confirmationStatus !== "confirmed";
 		if (activeTab === "confirmed") return conn.confirmationStatus === "confirmed";
@@ -874,14 +991,6 @@ function ConnectionsPage() {
 
 	const pendingCount = connections.filter((c) => c.confirmationStatus !== "confirmed").length;
 	const confirmedCount = connections.filter((c) => c.confirmationStatus === "confirmed").length;
-
-	if (isLoading) {
-		return (
-			<div className="flex items-center justify-center min-h-[60vh]">
-				<Loader2 className="size-8 animate-spin text-muted-foreground" />
-			</div>
-		);
-	}
 
 	return (
 		<div className="mx-auto max-w-5xl px-4 py-8 space-y-6">
@@ -942,6 +1051,11 @@ function ConnectionsPage() {
 									}
 								/>
 							))}
+							<LoadMoreButton
+								nextCursor={nextCursor}
+								isLoading={isFetchingNextPage}
+								onLoadMore={handleLoadMore}
+							/>
 						</div>
 					}
 				</TabsContent>

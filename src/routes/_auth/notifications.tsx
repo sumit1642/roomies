@@ -1,15 +1,16 @@
 // src/routes/_auth/notifications.tsx
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "#/components/ui/button";
 import { Card, CardContent } from "#/components/ui/card";
 import { EmptyState } from "#/components/EmptyState";
 import { LoadMoreButton } from "#/components/LoadMoreButton";
-import { getNotifications, markAsRead } from "#/lib/api/notifications";
+import { markAsRead } from "#/lib/api/notifications";
+import { notificationsInfiniteQueryOptions } from "#/lib/queryOptions";
 import { queryKeys } from "#/lib/queryKeys";
-import { STALE } from "#/lib/queryClient";
-import type { Notification, Cursor } from "#/types";
+import type { Notification, Cursor, PaginatedResponse } from "#/types";
+import type { InfiniteData } from "@tanstack/react-query";
 import { toast } from "#/components/ui/sonner";
 import {
 	Bell,
@@ -76,26 +77,27 @@ function getNotificationMeta(type: string): {
 function NotificationsPage() {
 	const navigate = useNavigate();
 	const qc = useQueryClient();
-	const [isLoadingMore, setIsLoadingMore] = useState(false);
 	const [markingId, setMarkingId] = useState<string | null>(null);
 	const [markingAll, setMarkingAll] = useState(false);
 
-	// Fetch notifications — nextCursor is derived directly from query data, no useState needed
-	const { data: notificationsData, isLoading } = useQuery({
-		queryKey: queryKeys.notifications.list(undefined),
-		queryFn: () => getNotifications(undefined),
-		staleTime: STALE.NOTIFICATION,
+	const {
+		data: notificationsData,
+		isFetchingNextPage: isLoadingMore,
+		fetchNextPage,
+	} = useInfiniteQuery({
+		...notificationsInfiniteQueryOptions(),
 	});
 
-	const notifications: Notification[] = notificationsData?.items ?? [];
-	const nextCursor: Cursor | null = notificationsData?.nextCursor ?? null;
+	const notifications: Notification[] = notificationsData?.pages.flatMap((p) => p.items) ?? [];
+	const lastPage = notificationsData?.pages[notificationsData.pages.length - 1];
+	const nextCursor: Cursor | null = lastPage ? lastPage.nextCursor : null;
 
 	// Helper: patch the cached notification list optimistically
 	const patchCache = (updater: (prev: Notification[]) => Notification[]) => {
-		qc.setQueryData(
+		qc.setQueryData<InfiniteData<PaginatedResponse<Notification>, Cursor | undefined>>(
 			queryKeys.notifications.list(undefined),
-			(old: { items: Notification[]; nextCursor: Cursor | null } | undefined) =>
-				old ? { ...old, items: updater(old.items) } : old,
+			(old) =>
+				old ? { ...old, pages: old.pages.map((page) => ({ ...page, items: updater(page.items) })) } : old,
 		);
 	};
 
@@ -132,20 +134,11 @@ function NotificationsPage() {
 		onSettled: () => setMarkingAll(false),
 	});
 
-	// Append next page into the cache — no separate state needed for the cursor
-	const handleLoadMore = async (cursor: Cursor) => {
-		setIsLoadingMore(true);
+	const handleLoadMore = async (_cursor: Cursor) => {
 		try {
-			const data = await getNotifications(undefined, cursor);
-			qc.setQueryData(
-				queryKeys.notifications.list(undefined),
-				(old: { items: Notification[]; nextCursor: Cursor | null } | undefined) =>
-					old ? { ...old, items: [...old.items, ...data.items], nextCursor: data.nextCursor } : data,
-			);
+			await fetchNextPage();
 		} catch {
 			toast.error("Failed to load notifications");
-		} finally {
-			setIsLoadingMore(false);
 		}
 	};
 
@@ -160,14 +153,6 @@ function NotificationsPage() {
 	};
 
 	const unreadCount = notifications.filter((n) => !n.isRead).length;
-
-	if (isLoading) {
-		return (
-			<div className="flex items-center justify-center min-h-[60vh]">
-				<Loader2 className="size-8 animate-spin text-muted-foreground" />
-			</div>
-		);
-	}
 
 	return (
 		<div className="mx-auto max-w-3xl px-4 py-8 space-y-6">

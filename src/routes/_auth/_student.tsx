@@ -1,8 +1,10 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_auth/_student")({
-	beforeLoad: () => {
-		// Role check will be done by parent _auth layout
+	beforeLoad: ({ context }) => {
+		if (context.auth.role !== "student") {
+			throw redirect({ to: "/dashboard", replace: true });
+		}
 	},
 	component: StudentLayout,
 });

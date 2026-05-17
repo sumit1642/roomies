@@ -1,19 +1,20 @@
 // src/routes/_auth/_student/interests.tsx
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
-import { Loader2, Heart, ExternalLink, X, Clock, CheckCircle, XCircle, Undo2 } from "lucide-react";
+import { useState } from "react";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Loader2, Heart, ExternalLink, X, Clock, CheckCircle, XCircle, Undo2, ChevronDown } from "lucide-react";
 import { Button } from "#/components/ui/button";
 import { Card, CardContent, CardHeader } from "#/components/ui/card";
 import { Badge } from "#/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "#/components/ui/tabs";
 import { toast } from "#/components/ui/sonner";
 import { EmptyState } from "#/components/EmptyState";
-import { LoadMoreButton } from "#/components/LoadMoreButton";
 import { ConfirmDialog } from "#/components/ConfirmDialog";
-import { StarRating } from "#/components/StarRating";
-import { getMyInterests, updateInterestStatus } from "#/lib/api/interests";
+import { updateInterestStatus } from "#/lib/api/interests";
+import { studentInterestsInfiniteQueryOptions } from "#/lib/queryOptions";
 import { formatCurrency, formatDate } from "#/lib/format";
-import type { InterestRequestWithListing, RequestStatus, Cursor } from "#/types";
+import { queryKeys } from "#/lib/queryKeys";
+import type { InterestRequestWithListing, RequestStatus } from "#/types";
 
 export const Route = createFileRoute("/_auth/_student/interests")({
 	component: InterestsPage,
@@ -41,56 +42,36 @@ const STATUS_CONFIG: Record<
 };
 
 function InterestsPage() {
-	const [interests, setInterests] = useState<InterestRequestWithListing[]>([]);
-	const [isLoading, setIsLoading] = useState(true);
-	const [isLoadingMore, setIsLoadingMore] = useState(false);
-	const [nextCursor, setNextCursor] = useState<Cursor | null>(null);
+	const qc = useQueryClient();
 	const [filter, setFilter] = useState<FilterStatus>("all");
-	const [withdrawingId, setWithdrawingId] = useState<string | null>(null);
 	const [confirmWithdraw, setConfirmWithdraw] = useState<string | null>(null);
 
-	const fetchInterests = async (status?: RequestStatus, cursor?: Cursor, append = false) => {
-		try {
-			const data = await getMyInterests(status, cursor);
-			if (append) {
-				setInterests((prev) => [...prev, ...data.items]);
-			} else {
-				setInterests(data.items);
-			}
-			setNextCursor(data.nextCursor);
-		} catch {
-			toast.error("Failed to load interests");
-		}
-	};
+	// ── Infinite query — replaces useEffect + useState array ──────────────────
+	const { data, isFetchingNextPage, fetchNextPage, hasNextPage } = useInfiniteQuery({
+		...studentInterestsInfiniteQueryOptions(filter === "all" ? undefined : filter),
+	});
 
-	useEffect(() => {
-		setIsLoading(true);
-		fetchInterests(filter === "all" ? undefined : filter).finally(() => setIsLoading(false));
-	}, [filter]);
+	const interests: InterestRequestWithListing[] = data?.pages.flatMap((p) => p.items) ?? [];
 
-	const handleLoadMore = async (cursor: Cursor) => {
-		setIsLoadingMore(true);
-		await fetchInterests(filter === "all" ? undefined : filter, cursor, true);
-		setIsLoadingMore(false);
-	};
-
-	const handleWithdraw = async (interestId: string) => {
-		setWithdrawingId(interestId);
-		try {
-			await updateInterestStatus(interestId, "withdrawn");
-			setInterests((prev) =>
-				prev.map((i) =>
-					i.interestRequestId === interestId ? { ...i, status: "withdrawn" as RequestStatus } : i,
-				),
-			);
+	// ── Withdraw mutation — optimistic update ──────────────────────────────────
+	const withdrawMutation = useMutation({
+		mutationFn: (interestId: string) => updateInterestStatus(interestId, "withdrawn"),
+		onMutate: async () => {
+			// Cancel in-flight refetches to avoid overwriting the optimistic update
+			await qc.cancelQueries({ queryKey: queryKeys.interests() });
+		},
+		onSuccess: () => {
+			// Invalidate so the cache reflects the new "withdrawn" status
+			void qc.invalidateQueries({ queryKey: queryKeys.interests() });
 			toast.success("Interest withdrawn");
-		} catch {
+		},
+		onError: () => {
 			toast.error("Failed to withdraw interest");
-		} finally {
-			setWithdrawingId(null);
+		},
+		onSettled: () => {
 			setConfirmWithdraw(null);
-		}
-	};
+		},
+	});
 
 	const counts: Record<string, number> = { all: interests.length };
 	for (const key of Object.keys(STATUS_CONFIG)) {
@@ -121,11 +102,7 @@ function InterestsPage() {
 				<TabsContent
 					value={filter}
 					className="mt-0">
-					{isLoading ?
-						<div className="flex items-center justify-center py-16">
-							<Loader2 className="size-8 animate-spin text-muted-foreground" />
-						</div>
-					: displayedInterests.length === 0 ?
+					{displayedInterests.length === 0 ?
 						<EmptyState
 							icon={Heart}
 							title={filter === "all" ? "No interests yet" : `No ${filter} interest requests`}
@@ -143,15 +120,27 @@ function InterestsPage() {
 										key={interest.interestRequestId}
 										interest={interest}
 										onWithdraw={() => setConfirmWithdraw(interest.interestRequestId)}
-										isWithdrawing={withdrawingId === interest.interestRequestId}
+										isWithdrawing={
+											withdrawMutation.isPending &&
+											withdrawMutation.variables === interest.interestRequestId
+										}
 									/>
 								))}
 							</div>
-							<LoadMoreButton
-								nextCursor={nextCursor}
-								isLoading={isLoadingMore}
-								onLoadMore={handleLoadMore}
-							/>
+							{hasNextPage && (
+								<div className="mt-6 flex justify-center">
+									<Button
+										variant="outline"
+										onClick={() => void fetchNextPage()}
+										disabled={isFetchingNextPage}
+										className="gap-2">
+										{isFetchingNextPage ?
+											<Loader2 className="size-4 animate-spin" />
+										:	<ChevronDown className="size-4" />}
+										Load more
+									</Button>
+								</div>
+							)}
 						</>
 					}
 				</TabsContent>
@@ -163,7 +152,7 @@ function InterestsPage() {
 				title="Withdraw Interest?"
 				description="This will withdraw your interest request. You won't be able to send interest to this listing again unless the owner removes your restriction."
 				confirmLabel="Withdraw"
-				onConfirm={() => confirmWithdraw && handleWithdraw(confirmWithdraw)}
+				onConfirm={() => confirmWithdraw && withdrawMutation.mutate(confirmWithdraw)}
 				variant="destructive"
 			/>
 		</div>
@@ -180,7 +169,7 @@ function InterestCard({
 	isWithdrawing: boolean;
 }) {
 	const { listing } = interest;
-	const statusCfg = STATUS_CONFIG[interest.status] || STATUS_CONFIG.pending;
+	const statusCfg = STATUS_CONFIG[interest.status];
 	const StatusIcon = statusCfg.icon;
 
 	return (

@@ -4,23 +4,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-	Loader2,
-	CheckCircle2,
-	XCircle,
-	ExternalLink,
-	ClipboardCheck,
-	ChevronDown,
-} from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, ExternalLink, ClipboardCheck, ChevronDown } from "lucide-react";
 import { Button } from "#/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardFooter,
-	CardHeader,
-	CardTitle,
-} from "#/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "#/components/ui/card";
 import { Badge } from "#/components/ui/badge";
 import { Textarea } from "#/components/ui/textarea";
 import { Label } from "#/components/ui/label";
@@ -35,11 +21,8 @@ import {
 } from "#/components/ui/dialog";
 import { EmptyState } from "#/components/EmptyState";
 import { toast } from "#/components/ui/sonner";
-import {
-	getVerificationQueue,
-	approveVerification,
-	rejectVerification,
-} from "#/lib/api/admin";
+import { approveVerification, rejectVerification } from "#/lib/api/admin";
+import { adminVerificationQueueInfiniteQueryOptions } from "#/lib/queryOptions";
 import { queryKeys } from "#/lib/queryKeys";
 import type { VerificationQueueItem } from "#/types";
 
@@ -55,12 +38,8 @@ function VerificationQueuePage() {
 	const [adminNotes, setAdminNotes] = useState("");
 	const [rejectionReason, setRejectionReason] = useState("");
 
-	const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
-		queryKey: queryKeys.adminVerificationQueue(),
-		queryFn: ({ pageParam }) =>
-			getVerificationQueue(pageParam as { cursorTime: string; cursorId: string } | undefined),
-		initialPageParam: undefined,
-		getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+	const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+		...adminVerificationQueueInfiniteQueryOptions(),
 	});
 
 	const items = data?.pages.flatMap((p) => p.items) ?? [];
@@ -78,15 +57,8 @@ function VerificationQueuePage() {
 	});
 
 	const rejectMutation = useMutation({
-		mutationFn: ({
-			requestId,
-			reason,
-			notes,
-		}: {
-			requestId: string;
-			reason: string;
-			notes?: string;
-		}) => rejectVerification(requestId, reason, notes),
+		mutationFn: ({ requestId, reason, notes }: { requestId: string; reason: string; notes?: string }) =>
+			rejectVerification(requestId, reason, notes),
 		onSuccess: () => {
 			void qc.invalidateQueries({ queryKey: queryKeys.adminVerificationQueue() });
 			toast.success("Verification rejected");
@@ -96,14 +68,6 @@ function VerificationQueuePage() {
 		},
 		onError: () => toast.error("Failed to reject verification"),
 	});
-
-	if (isLoading) {
-		return (
-			<div className="flex items-center justify-center py-20">
-				<Loader2 className="size-8 animate-spin text-muted-foreground" />
-			</div>
-		);
-	}
 
 	if (!items.length) {
 		return (
@@ -203,8 +167,8 @@ function VerificationQueuePage() {
 					<DialogHeader>
 						<DialogTitle>Reject Verification</DialogTitle>
 						<DialogDescription>
-							Reject <strong>{rejectTarget?.business_name}</strong>. Provide a reason so the
-							owner knows what to fix.
+							Reject <strong>{rejectTarget?.business_name}</strong>. Provide a reason so the owner knows
+							what to fix.
 						</DialogDescription>
 					</DialogHeader>
 					<div className="space-y-4">
@@ -301,9 +265,7 @@ function VerificationCard({
 				</div>
 				<div className="flex justify-between items-center">
 					<span className="text-muted-foreground">Submitted</span>
-					<span className="font-medium">
-						{new Date(item.submitted_at).toLocaleDateString("en-IN")}
-					</span>
+					<span className="font-medium">{new Date(item.submitted_at).toLocaleDateString("en-IN")}</span>
 				</div>
 				<a
 					href={item.document_url}

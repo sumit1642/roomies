@@ -35,7 +35,11 @@ function LandingPage() {
 								<Button
 									variant="ghost"
 									asChild>
-									<Link to="/login">Sign In</Link>
+									<Link
+										to="/login"
+										search={{ redirect: undefined }}>
+										Sign In
+									</Link>
 								</Button>
 								<Button asChild>
 									<Link to="/register">Get Started</Link>

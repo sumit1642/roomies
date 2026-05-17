@@ -11,7 +11,8 @@ import { Tabs, TabsList, TabsTrigger } from "#/components/ui/tabs";
 import { toast } from "#/components/ui/sonner";
 import { useAuth } from "#/context/AuthContext";
 import { register } from "#/lib/api/auth";
-import { registerStudentSchema, registerPgOwnerSchema, type RegisterFormData } from "#/lib/schemas/auth";
+import { registerStudentSchema, registerPgOwnerSchema  } from "#/lib/schemas/auth";
+import type {RegisterFormData} from "#/lib/schemas/auth";
 import { ApiClientError } from "#/lib/api";
 
 export const Route = createFileRoute("/register")({
@@ -398,6 +399,7 @@ function RegisterPage() {
 							Already have an account?{" "}
 							<Link
 								to="/login"
+								search={{ redirect: undefined }}
 								className="font-medium text-primary hover:underline">
 								Sign in
 							</Link>

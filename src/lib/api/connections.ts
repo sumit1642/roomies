@@ -7,8 +7,6 @@ import type {
 	ConnectionDetail,
 	Cursor,
 	ConfirmationStatus,
-	LegacyApiResponse,
-	Connection,
 } from "#/types";
 
 /**
@@ -65,58 +63,3 @@ export async function confirmConnection(connectionId: string): Promise<{
 	});
 	return res.data;
 }
-
-function ok<T>(data?: T, message?: string): LegacyApiResponse<T> {
-	return { success: true, data, message };
-}
-
-function fail<T>(message: string): LegacyApiResponse<T> {
-	return { success: false, message };
-}
-
-function toLegacyConnection(item: ConnectionListItem): Connection {
-	return {
-		id: item.connectionId,
-		status: item.confirmationStatus === "confirmed" ? "confirmed" : "pending",
-		initiated_by: "student",
-		created_at: item.createdAt,
-		listing:
-			item.listing ?
-				{
-					title: item.listing.title,
-					property: { name: item.listing.city },
-				}
-			:	undefined,
-		other_user: {
-			name: item.otherParty.fullName,
-			avatar_url: item.otherParty.profilePhotoUrl,
-		},
-	};
-}
-
-export const connectionsApi = {
-	async getMyConnections(): Promise<LegacyApiResponse<Connection[]>> {
-		try {
-			const res = await getMyConnections();
-			return ok(res.items.map(toLegacyConnection));
-		} catch {
-			return fail("Failed to load connections");
-		}
-	},
-
-	async acceptConnection(connectionId: string): Promise<LegacyApiResponse<{ confirmationStatus: string }>> {
-		try {
-			const res = await confirmConnection(connectionId);
-			return ok(res);
-		} catch {
-			return fail("Failed to confirm connection");
-		}
-	},
-
-	async rejectConnection(_connectionId: string): Promise<LegacyApiResponse<null>> {
-		return fail(
-			"Declining a connection is not supported after it has been created. " +
-				"Decline the interest request before the connection is established.",
-		);
-	},
-};

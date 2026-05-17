@@ -14,12 +14,8 @@
 
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
-import {
-	useInfiniteQuery,
-	useMutation,
-	useQueryClient,
-	type InfiniteData,
-} from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import type { InfiniteData } from "@tanstack/react-query";
 import {
 	Loader2,
 	Flag,
@@ -33,14 +29,7 @@ import {
 	X,
 } from "lucide-react";
 import { Button } from "#/components/ui/button";
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardFooter,
-	CardHeader,
-	CardTitle,
-} from "#/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "#/components/ui/card";
 import { Badge } from "#/components/ui/badge";
 import { Textarea } from "#/components/ui/textarea";
 import { Label } from "#/components/ui/label";
@@ -57,9 +46,11 @@ import { EmptyState } from "#/components/EmptyState";
 import { UserAvatar } from "#/components/UserAvatar";
 import { StarRating } from "#/components/StarRating";
 import { toast } from "#/components/ui/sonner";
-import { getReportQueue, resolveReport, type ReportResolution } from "#/lib/api/admin";
+import { resolveReport } from "#/lib/api/admin";
+import type { ReportResolution } from "#/lib/api/admin";
+import { adminReportQueueInfiniteQueryOptions } from "#/lib/queryOptions";
 import { queryKeys } from "#/lib/queryKeys";
-import type { AdminReportQueueItem, PaginatedResponse } from "#/types";
+import type { AdminReportQueueItem, Cursor, PaginatedResponse } from "#/types";
 
 export const Route = createFileRoute("/_auth/_admin/reports")({
 	component: ReportQueuePage,
@@ -68,22 +59,18 @@ export const Route = createFileRoute("/_auth/_admin/reports")({
 
 // ── Reason labels ─────────────────────────────────────────────────────────────
 const REASON_LABELS: Record<string, string> = {
-	spam: "Spam",
 	fake: "Fake / Fabricated",
-	harassment: "Harassment",
-	inappropriate: "Inappropriate Content",
+	abusive: "Abusive Content",
 	conflict_of_interest: "Conflict of Interest",
 	other: "Other",
 };
 
 const REASON_COLOR: Record<string, string> = {
-	harassment: "destructive",
-	inappropriate: "destructive",
+	abusive: "destructive",
 	fake: "warning",
-	spam: "warning",
 	conflict_of_interest: "secondary",
 	other: "secondary",
-} as Record<string, string>;
+};
 
 // ── Score row helper ──────────────────────────────────────────────────────────
 function ScoreRow({ label, value }: { label: string; value: number | null }) {
@@ -105,18 +92,8 @@ function ReportQueuePage() {
 	const [resolveTarget, setResolveTarget] = useState<AdminReportQueueItem | null>(null);
 	const [adminNotes, setAdminNotes] = useState("");
 
-	const {
-		data,
-		isLoading,
-		fetchNextPage,
-		hasNextPage,
-		isFetchingNextPage,
-	} = useInfiniteQuery({
-		queryKey: queryKeys.adminReportQueue(),
-		queryFn: ({ pageParam }) =>
-			getReportQueue(pageParam as { cursorTime: string; cursorId: string } | undefined),
-		initialPageParam: undefined,
-		getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+	const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
+		...adminReportQueueInfiniteQueryOptions(),
 	});
 
 	const items = data?.pages.flatMap((p) => p.items) ?? [];
@@ -137,11 +114,11 @@ function ReportQueuePage() {
 		onMutate: async ({ reportId }) => {
 			await qc.cancelQueries({ queryKey: queryKeys.adminReportQueue() });
 
-			const previous = qc.getQueryData<InfiniteData<PaginatedResponse<AdminReportQueueItem>>>(
+			const previous = qc.getQueryData<InfiniteData<PaginatedResponse<AdminReportQueueItem>, Cursor | undefined>>(
 				queryKeys.adminReportQueue(),
 			);
 
-			qc.setQueryData<InfiniteData<PaginatedResponse<AdminReportQueueItem>>>(
+			qc.setQueryData<InfiniteData<PaginatedResponse<AdminReportQueueItem>, Cursor | undefined>>(
 				queryKeys.adminReportQueue(),
 				(old) => {
 					if (!old) return old;
@@ -168,9 +145,9 @@ function ReportQueuePage() {
 
 		onSuccess: (_data, { resolution }) => {
 			const msg =
-				resolution === "resolved_removed"
-					? "Rating hidden from public view"
-					: "Report dismissed — rating kept visible";
+				resolution === "resolved_removed" ?
+					"Rating hidden from public view"
+				:	"Report dismissed — rating kept visible";
 			toast.success(msg);
 			setResolveTarget(null);
 			setAdminNotes("");
@@ -184,20 +161,16 @@ function ReportQueuePage() {
 
 	const handleResolve = (resolution: ReportResolution) => {
 		if (!resolveTarget) return;
+		if (resolution === "resolved_removed" && !adminNotes.trim()) {
+			toast.error("Admin notes are required when removing a rating");
+			return;
+		}
 		resolveMutation.mutate({
 			reportId: resolveTarget.reportId,
 			resolution,
-			notes: adminNotes || undefined,
+			notes: adminNotes.trim() || undefined,
 		});
 	};
-
-	if (isLoading) {
-		return (
-			<div className="flex items-center justify-center py-20">
-				<Loader2 className="size-8 animate-spin text-muted-foreground" />
-			</div>
-		);
-	}
 
 	if (!items.length) {
 		return (
@@ -269,9 +242,7 @@ function ReportQueuePage() {
 										size="sm"
 									/>
 									<div>
-										<p className="text-sm font-medium">
-											{resolveTarget.rating.reviewer.fullName}
-										</p>
+										<p className="text-sm font-medium">{resolveTarget.rating.reviewer.fullName}</p>
 										<p className="text-xs text-muted-foreground">Reviewer</p>
 									</div>
 									<span className="text-muted-foreground mx-1">→</span>
@@ -281,13 +252,15 @@ function ReportQueuePage() {
 										size="sm"
 									/>
 									<div>
-										<p className="text-sm font-medium">
-											{resolveTarget.rating.reviewee.fullName}
-										</p>
+										<p className="text-sm font-medium">{resolveTarget.rating.reviewee.fullName}</p>
 										<p className="text-xs text-muted-foreground">Reviewee</p>
 									</div>
 								</div>
-								<StarRating rating={resolveTarget.rating.overallScore} size="sm" showValue />
+								<StarRating
+									rating={resolveTarget.rating.overallScore}
+									size="sm"
+									showValue
+								/>
 								{resolveTarget.rating.comment && (
 									<p className="text-xs italic text-muted-foreground border-l-2 border-border pl-2 line-clamp-3">
 										"{resolveTarget.rating.comment}"
@@ -311,13 +284,12 @@ function ReportQueuePage() {
 									</p>
 								)}
 								<p className="text-xs text-muted-foreground">
-									Reported by{" "}
-									<strong>{resolveTarget.reporter.fullName}</strong>
+									Reported by <strong>{resolveTarget.reporter.fullName}</strong>
 								</p>
 							</div>
 
 							<div className="space-y-2">
-								<Label htmlFor="resolve-notes">Admin Notes (optional)</Label>
+								<Label htmlFor="resolve-notes">Admin Notes (required to remove rating)</Label>
 								<Textarea
 									id="resolve-notes"
 									placeholder="Internal notes about this decision..."
@@ -348,7 +320,7 @@ function ReportQueuePage() {
 						<Button
 							variant="destructive"
 							className="gap-2"
-							disabled={resolveMutation.isPending}
+							disabled={resolveMutation.isPending || !adminNotes.trim()}
 							onClick={() => handleResolve("resolved_removed")}>
 							{resolveMutation.isPending && <Loader2 className="size-4 animate-spin" />}
 							<EyeOff className="size-4" />
@@ -362,18 +334,9 @@ function ReportQueuePage() {
 }
 
 // ── Report Card ───────────────────────────────────────────────────────────────
-function ReportCard({
-	item,
-	onResolve,
-}: {
-	item: AdminReportQueueItem;
-	onResolve: () => void;
-}) {
+function ReportCard({ item, onResolve }: { item: AdminReportQueueItem; onResolve: () => void }) {
 	const [expanded, setExpanded] = useState(false);
-	const badgeVariant = (REASON_COLOR[item.reason] ?? "secondary") as
-		| "destructive"
-		| "warning"
-		| "secondary";
+	const badgeVariant = (REASON_COLOR[item.reason] ?? "secondary") as "destructive" | "warning" | "secondary";
 
 	return (
 		<Card className="flex flex-col">
@@ -392,7 +355,9 @@ function ReportCard({
 							})}
 						</CardDescription>
 					</div>
-					<Badge variant={badgeVariant} className="shrink-0 text-xs">
+					<Badge
+						variant={badgeVariant}
+						className="shrink-0 text-xs">
 						{REASON_LABELS[item.reason] ?? item.reason}
 					</Badge>
 				</div>
@@ -401,9 +366,7 @@ function ReportCard({
 			<CardContent className="flex-1 space-y-3 text-sm pb-3">
 				{/* Parties */}
 				<div className="space-y-1.5">
-					<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-						Rating
-					</p>
+					<p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Rating</p>
 					<div className="flex items-center gap-2">
 						<UserAvatar
 							name={item.rating.reviewer.fullName}
@@ -433,7 +396,11 @@ function ReportCard({
 				{/* Overall score */}
 				<div className="flex items-center justify-between">
 					<span className="text-muted-foreground text-xs">Overall Score</span>
-					<StarRating rating={item.rating.overallScore} size="sm" showValue />
+					<StarRating
+						rating={item.rating.overallScore}
+						size="sm"
+						showValue
+					/>
 				</div>
 
 				{/* Comment preview */}
@@ -447,10 +414,22 @@ function ReportCard({
 				{/* Expandable detail scores */}
 				{expanded && (
 					<div className="space-y-1.5 bg-muted/30 rounded-lg p-2.5">
-						<ScoreRow label="Cleanliness" value={item.rating.cleanlinessScore} />
-						<ScoreRow label="Communication" value={item.rating.communicationScore} />
-						<ScoreRow label="Reliability" value={item.rating.reliabilityScore} />
-						<ScoreRow label="Value" value={item.rating.valueScore} />
+						<ScoreRow
+							label="Cleanliness"
+							value={item.rating.cleanlinessScore}
+						/>
+						<ScoreRow
+							label="Communication"
+							value={item.rating.communicationScore}
+						/>
+						<ScoreRow
+							label="Reliability"
+							value={item.rating.reliabilityScore}
+						/>
+						<ScoreRow
+							label="Value"
+							value={item.rating.valueScore}
+						/>
 					</div>
 				)}
 
@@ -477,8 +456,13 @@ function ReportCard({
 					className="w-full text-xs text-muted-foreground h-7"
 					onClick={() => setExpanded((p) => !p)}>
 					{expanded ?
-						<><X className="size-3 mr-1" /> Hide scores</>
-					:	<><ChevronDown className="size-3 mr-1" /> Show all scores</>}
+						<>
+							<X className="size-3 mr-1" /> Hide scores
+						</>
+					:	<>
+							<ChevronDown className="size-3 mr-1" /> Show all scores
+						</>
+					}
 				</Button>
 				<Button
 					size="sm"

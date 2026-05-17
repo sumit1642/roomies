@@ -1,6 +1,7 @@
 // src/routes/_auth/_student/roommates.tsx
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
 	Loader2,
 	UserSearch,
@@ -9,25 +10,18 @@ import {
 	ShieldOff,
 	ToggleLeft,
 	ToggleRight,
-	Filter,
-	ChevronDown,
 } from "lucide-react";
 import { Button } from "#/components/ui/button";
 import { Card, CardContent, CardHeader } from "#/components/ui/card";
 import { Badge } from "#/components/ui/badge";
-import {
-	DropdownMenu,
-	DropdownMenuContent,
-	DropdownMenuItem,
-	DropdownMenuTrigger,
-} from "#/components/ui/dropdown-menu";
 import { toast } from "#/components/ui/sonner";
 import { EmptyState } from "#/components/EmptyState";
 import { LoadMoreButton } from "#/components/LoadMoreButton";
 import { ConfirmDialog } from "#/components/ConfirmDialog";
 import { StarRating } from "#/components/StarRating";
 import { UserAvatar } from "#/components/UserAvatar";
-import { getRoommateFeed, updateRoommateProfile, blockUser } from "#/lib/api/roommates";
+import { updateRoommateProfile, blockUser, unblockUser } from "#/lib/api/roommates";
+import { roommateFeedInfiniteQueryOptions } from "#/lib/queryOptions";
 import { useAuth } from "#/context/AuthContext";
 import type { RoommateProfile, Cursor } from "#/types";
 
@@ -38,8 +32,6 @@ export const Route = createFileRoute("/_auth/_student/roommates")({
 	}),
 });
 
-type SortOption = "compatibility" | "recent";
-
 const GENDER_LABELS: Record<string, string> = {
 	male: "Male",
 	female: "Female",
@@ -49,84 +41,102 @@ const GENDER_LABELS: Record<string, string> = {
 
 function RoommatesPage() {
 	const { user } = useAuth();
-	const [profiles, setProfiles] = useState<RoommateProfile[]>([]);
-	const [isLoading, setIsLoading] = useState(true);
-	const [isLoadingMore, setIsLoadingMore] = useState(false);
-	const [nextCursor, setNextCursor] = useState<Cursor | null>(null);
+	const qc = useQueryClient();
 	const [isOptedIn, setIsOptedIn] = useState(false);
-	const [isTogglingOptIn, setIsTogglingOptIn] = useState(false);
-	const [sortBy, setSortBy] = useState<SortOption>("compatibility");
 	const [blockTarget, setBlockTarget] = useState<string | null>(null);
 	const [blockingId, setBlockingId] = useState<string | null>(null);
 
-	const fetchFeed = useCallback(
-		async (cursor?: Cursor, append = false) => {
-			try {
-				const data = await getRoommateFeed({
-					sortBy,
-					cursorTime: cursor?.cursorTime,
-					cursorId: cursor?.cursorId,
-				});
-				if (append) {
-					setProfiles((prev) => [...prev, ...data.items]);
-				} else {
-					setProfiles(data.items);
-				}
-				setNextCursor(data.nextCursor);
-			} catch (err: unknown) {
-				const msg = err instanceof Error ? err.message : "Failed to load roommate feed";
-				toast.error(msg);
-			}
-		},
-		[sortBy],
-	);
+	const roommateFeedKey = ["roommates", "feed"] as const;
 
-	useEffect(() => {
-		setIsLoading(true);
-		fetchFeed().finally(() => setIsLoading(false));
-	}, [fetchFeed]);
+	const {
+		data,
+		isFetchingNextPage: isLoadingMore,
+		fetchNextPage,
+	} = useInfiniteQuery({
+		...roommateFeedInfiniteQueryOptions(),
+	});
 
-	const handleLoadMore = async (cursor: Cursor) => {
-		setIsLoadingMore(true);
-		await fetchFeed(cursor, true);
-		setIsLoadingMore(false);
+	const profiles = data?.pages.flatMap((page) => page.items) ?? [];
+	const lastPage = data?.pages[data.pages.length - 1];
+	const nextCursor = lastPage ? lastPage.nextCursor : null;
+
+	const handleLoadMore = async (_cursor: Cursor) => {
+		try {
+			await fetchNextPage();
+		} catch {
+			toast.error("Failed to load more profiles");
+		}
 	};
+
+	const toggleOptInMutation = useMutation({
+		mutationFn: (newValue: boolean) => {
+			if (!user?.userId) throw new Error("User not found");
+			return updateRoommateProfile(user.userId, { lookingForRoommate: newValue });
+		},
+		onSuccess: async (updatedProfile) => {
+			setIsOptedIn(updatedProfile.lookingForRoommate ?? false);
+			await qc.invalidateQueries({ queryKey: roommateFeedKey });
+			toast.success(
+				updatedProfile.lookingForRoommate ?
+					"You're now visible in the roommate feed!"
+				:	"You've opted out of roommate matching.",
+			);
+		},
+		onError: () => {
+			toast.error("Failed to update roommate preference.");
+		},
+	});
+
+	const blockMutation = useMutation({
+		mutationFn: async (targetUserId: string) => {
+			if (!user?.userId) throw new Error("User not found");
+			await blockUser(user.userId, targetUserId);
+			return targetUserId;
+		},
+		onSuccess: async (targetUserId) => {
+			setBlockingId(null);
+			setBlockTarget(null);
+			qc.setQueryData(
+				roommateFeedKey,
+				(old: { pages: Array<{ items: RoommateProfile[] }>; pageParams: unknown[] } | undefined) =>
+					old ?
+						{
+							...old,
+							pages: old.pages.map((page) => ({
+								...page,
+								items: page.items.filter((p) => p.userId !== targetUserId),
+							})),
+						}
+					:	old,
+			);
+			toast.success("User blocked and removed from your feed.", {
+				action: {
+					label: "Undo",
+					onClick: async () => {
+						if (!user?.userId) return;
+						await unblockUser(user.userId, targetUserId);
+						await qc.invalidateQueries({ queryKey: roommateFeedKey });
+					},
+				},
+			});
+		},
+		onError: () => {
+			setBlockingId(null);
+			setBlockTarget(null);
+			toast.error("Failed to block user.");
+		},
+	});
 
 	const handleToggleOptIn = async () => {
 		if (!user?.userId) return;
-		setIsTogglingOptIn(true);
-		try {
-			const newValue = !isOptedIn;
-			await updateRoommateProfile(user.userId, { isOptedIn: newValue });
-			setIsOptedIn(newValue);
-			toast.success(
-				newValue ? "You're now visible in the roommate feed!" : "You've opted out of roommate matching.",
-			);
-			if (newValue) {
-				setIsLoading(true);
-				await fetchFeed();
-				setIsLoading(false);
-			}
-		} catch {
-			toast.error("Failed to update roommate preference.");
-		} finally {
-			setIsTogglingOptIn(false);
-		}
+		const newValue = !isOptedIn;
+		await toggleOptInMutation.mutateAsync(newValue);
 	};
 
 	const handleBlock = async (targetUserId: string) => {
 		if (!user?.userId) return;
 		setBlockingId(targetUserId);
-		try {
-			await blockUser(user.userId, targetUserId);
-			setProfiles((prev) => prev.filter((p) => p.userId !== targetUserId));
-			toast.success("User blocked and removed from your feed.");
-		} catch {
-			toast.error("Failed to block user.");
-		} finally {
-			setBlockingId(null);
-			setBlockTarget(null);
-		}
+		await blockMutation.mutateAsync(targetUserId);
 	};
 
 	return (
@@ -144,34 +154,14 @@ function RoommatesPage() {
 						</p>
 					</div>
 					<div className="flex items-center gap-3 flex-wrap">
-						{/* Sort Dropdown */}
-						<DropdownMenu>
-							<DropdownMenuTrigger asChild>
-								<Button
-									variant="outline"
-									size="sm"
-									className="gap-2">
-									<Filter className="size-4" />
-									{sortBy === "compatibility" ? "Best Match" : "Most Recent"}
-									<ChevronDown className="size-3.5" />
-								</Button>
-							</DropdownMenuTrigger>
-							<DropdownMenuContent align="end">
-								<DropdownMenuItem onClick={() => setSortBy("compatibility")}>
-									Best Match (Compatibility)
-								</DropdownMenuItem>
-								<DropdownMenuItem onClick={() => setSortBy("recent")}>Most Recent</DropdownMenuItem>
-							</DropdownMenuContent>
-						</DropdownMenu>
-
 						{/* Opt-In Toggle Button */}
 						<Button
 							variant={isOptedIn ? "default" : "outline"}
 							size="sm"
 							onClick={handleToggleOptIn}
-							disabled={isTogglingOptIn}
+							disabled={toggleOptInMutation.isPending}
 							className="gap-2">
-							{isTogglingOptIn ?
+							{toggleOptInMutation.isPending ?
 								<Loader2 className="size-4 animate-spin" />
 							: isOptedIn ?
 								<ToggleRight className="size-4" />
@@ -195,9 +185,9 @@ function RoommatesPage() {
 						</div>
 						<Button
 							onClick={handleToggleOptIn}
-							disabled={isTogglingOptIn}
+							disabled={toggleOptInMutation.isPending}
 							size="sm">
-							{isTogglingOptIn && <Loader2 className="size-4 mr-2 animate-spin" />}
+							{toggleOptInMutation.isPending && <Loader2 className="size-4 mr-2 animate-spin" />}
 							Join Matching
 						</Button>
 					</CardContent>
@@ -205,11 +195,7 @@ function RoommatesPage() {
 			)}
 
 			{/* Feed */}
-			{isLoading ?
-				<div className="flex items-center justify-center py-20">
-					<Loader2 className="size-8 animate-spin text-muted-foreground" />
-				</div>
-			: profiles.length === 0 ?
+			{profiles.length === 0 ?
 				<EmptyState
 					icon={UserSearch}
 					title="No roommates found"

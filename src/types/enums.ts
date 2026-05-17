@@ -100,7 +100,7 @@ export type RequestStatus = (typeof RequestStatus)[keyof typeof RequestStatus];
 export const InterestStatus = {
 	PENDING: "pending",
 	ACCEPTED: "accepted",
-	REJECTED: "declined",
+	DECLINED: "declined",
 } as const;
 
 export const ConfirmationStatus = {

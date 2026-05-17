@@ -4,6 +4,9 @@
 
 export const queryKeys = {
 	// ── Auth / Sessions ────────────────────────────────────────────────────────
+	auth: {
+		me: () => ["auth", "me"] as const,
+	},
 	sessions: () => ["sessions"] as const,
 
 	// ── Notifications ──────────────────────────────────────────────────────────
@@ -46,6 +49,15 @@ export const queryKeys = {
 
 	// ── Ratings ───────────────────────────────────────────────────────────────
 	publicUserRatings: (userId: string) => ["ratings", "user", userId] as const,
+	publicPropertyRatings: (propertyId: string) => ["ratings", "property", propertyId] as const,
+	myGivenRatings: () => ["ratings", "me", "given"] as const,
+
+	// ── Saved Searches ────────────────────────────────────────────────────────
+	savedSearches: () => ["saved-searches"] as const,
+
+	// ── Rent Index ────────────────────────────────────────────────────────────
+	rentIndex: (params: { city: string; locality: string; roomType: string }) =>
+		["rent-index", params] as const,
 
 	// ── Admin ─────────────────────────────────────────────────────────────────
 	adminVerificationQueue: () => ["admin", "verification-queue"] as const,

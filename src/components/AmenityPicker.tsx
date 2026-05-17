@@ -63,7 +63,7 @@ export function AmenityPicker({ selectedIds, onChange, disabled = false }: Ameni
 	}
 
 	const grouped = amenities.reduce<Record<string, Amenity[]>>((acc, a) => {
-		const cat = a.category ?? "utility";
+		const cat = a.category;
 		(acc[cat] = acc[cat] ?? []).push(a);
 		return acc;
 	}, {});

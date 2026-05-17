@@ -1,8 +1,12 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useCallback } from "react";
+import type { ReactNode } from "react";
 import type { MeResponse, AuthResponse, Role } from "#/types";
-import { getMe, logout as apiLogout } from "#/lib/api/auth";
+import { logout as apiLogout } from "#/lib/api/auth";
 import { tokenStore } from "#/lib/api";
 import { queryClient } from "#/lib/queryClient";
+import { useQuery } from "@tanstack/react-query";
+import { authMeQueryOptions } from "#/lib/queryOptions";
+import { queryKeys } from "#/lib/queryKeys";
 
 interface AuthContextValue {
 	user: MeResponse | null;
@@ -17,38 +21,22 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-	const [user, setUser] = useState<MeResponse | null>(null);
-	const [isLoading, setIsLoading] = useState(true);
+	const {
+		data: user = null,
+		isPending,
+		refetch,
+	} = useQuery({
+		...authMeQueryOptions(),
+		enabled: !(import.meta.env.PROD && !tokenStore.hasTokens()),
+	});
 
-	const role = user?.roles?.[0] as Role | null;
+	const role = user?.roles[0] as Role | null;
 	const isEmailVerified = user?.isEmailVerified ?? false;
+	const isLoading = import.meta.env.PROD && !tokenStore.hasTokens() ? false : isPending;
 
 	const refreshUser = useCallback(async () => {
-		try {
-			const me = await getMe();
-			setUser(me);
-		} catch {
-			setUser(null);
-		}
-	}, []);
-
-	useEffect(() => {
-		async function hydrate() {
-			if (import.meta.env.PROD && !tokenStore.hasTokens()) {
-				setIsLoading(false);
-				return;
-			}
-			try {
-				const me = await getMe();
-				setUser(me);
-			} catch {
-				setUser(null);
-			} finally {
-				setIsLoading(false);
-			}
-		}
-		hydrate();
-	}, []);
+		await refetch();
+	}, [refetch]);
 
 	const login = useCallback((data: AuthResponse) => {
 		if (import.meta.env.PROD) {
@@ -58,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 				console.warn("[AuthContext] login() called without tokens in production — auth may not persist");
 			}
 		}
-		setUser({ ...data.user, sid: data.sid });
+		queryClient.setQueryData(queryKeys.auth.me(), { ...data.user, sid: data.sid });
 	}, []);
 
 	const logout = useCallback(async () => {
@@ -66,7 +54,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 			await apiLogout();
 		} finally {
 			tokenStore.clearTokens();
-			setUser(null);
 			queryClient.clear();
 		}
 	}, []);

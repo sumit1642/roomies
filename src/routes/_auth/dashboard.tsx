@@ -12,7 +12,6 @@ import {
 	CheckCircle,
 	Clock,
 	ArrowRight,
-	Star,
 } from "lucide-react";
 import { Button } from "#/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "#/components/ui/card";
@@ -26,7 +25,6 @@ import { getMyProperties } from "#/lib/api/properties";
 import { getStudentProfile, getPgOwnerProfile } from "#/lib/api/profiles";
 import { queryKeys } from "#/lib/queryKeys";
 import { STALE } from "#/lib/queryClient";
-import type { Notification, StudentProfile, PgOwnerProfile } from "#/types";
 import { formatDistanceToNow } from "date-fns";
 import { StarRating } from "#/components/StarRating";
 
@@ -96,7 +94,7 @@ function StudentDashboard({ userId, isEmailVerified }: { userId: string; isEmail
 	const acceptedInterests = acceptedInterestsData?.items.length ?? 0;
 	const confirmedConnections = connectionsData?.items.length ?? 0;
 	const savedCount = savedData?.items.length ?? 0;
-	const recentNotifications = (notificationsData?.items ?? []).slice(0, 4) as Notification[];
+	const recentNotifications = (notificationsData?.items ?? []).slice(0, 4);
 
 	return (
 		<div className="mx-auto max-w-6xl px-4 py-8 space-y-6">
@@ -288,7 +286,7 @@ function PgOwnerDashboard({ userId }: { userId: string }) {
 	const activeListings = propertiesData?.items.reduce((sum, p) => sum + p.active_listing_count, 0) ?? 0;
 	const confirmedConnections = confirmedConnsData?.items.length ?? 0;
 	const pendingConnections = allConnectionsData?.items.filter((c) => c.confirmationStatus !== "confirmed").length ?? 0;
-	const recentNotifications = (notificationsData?.items ?? []).slice(0, 4) as Notification[];
+	const recentNotifications = (notificationsData?.items ?? []).slice(0, 4);
 	const verificationStatus = profile?.verification_status || "unverified";
 
 	return (

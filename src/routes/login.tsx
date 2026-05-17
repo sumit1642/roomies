@@ -1,6 +1,6 @@
 // src/routes/login.tsx
 import { useState, useEffect } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate, useRouter, useSearch } from "@tanstack/react-router";
 import { Eye, EyeOff, Home, Loader2 } from "lucide-react";
 import { Button } from "#/components/ui/button";
 import { Input } from "#/components/ui/input";
@@ -9,10 +9,14 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { toast } from "#/components/ui/sonner";
 import { useAuth } from "#/context/AuthContext";
 import { login } from "#/lib/api/auth";
-import { loginSchema, type LoginFormData } from "#/lib/schemas/auth";
+import { loginSchema } from "#/lib/schemas/auth";
+import type { LoginFormData } from "#/lib/schemas/auth";
 import { ApiClientError } from "#/lib/api";
 
 export const Route = createFileRoute("/login")({
+	validateSearch: (search: Record<string, unknown>) => ({
+		redirect: typeof search.redirect === "string" ? search.redirect : undefined,
+	}),
 	component: LoginPage,
 	head: () => ({
 		meta: [{ title: "Sign In - Roomies" }],
@@ -21,6 +25,8 @@ export const Route = createFileRoute("/login")({
 
 function LoginPage() {
 	const navigate = useNavigate();
+	const router = useRouter();
+	const search = useSearch({ from: "/login" });
 	const { user, isLoading, login: setAuth } = useAuth();
 	const [isSubmitting, setIsSubmitting] = useState(false);
 	const [showPassword, setShowPassword] = useState(false);
@@ -31,12 +37,15 @@ function LoginPage() {
 	const [errors, setErrors] = useState<Partial<Record<keyof LoginFormData, string>>>({});
 	const [apiError, setApiError] = useState<string | null>(null);
 
-	// FIX: was calling navigate() during render. Use useEffect instead.
 	useEffect(() => {
 		if (!isLoading && user) {
-			navigate({ to: "/dashboard" });
+			if (search.redirect) {
+				router.history.push(search.redirect);
+				return;
+			}
+			navigate({ to: "/dashboard", replace: true });
 		}
-	}, [user, isLoading, navigate]);
+	}, [user, isLoading, navigate, router.history, search.redirect]);
 
 	if (isLoading) {
 		return (
@@ -69,7 +78,11 @@ function LoginPage() {
 			const response = await login(formData);
 			setAuth(response);
 			toast.success("Welcome back!");
-			navigate({ to: "/dashboard" });
+			if (search.redirect) {
+				router.history.push(search.redirect);
+			} else {
+				navigate({ to: "/dashboard", replace: true });
+			}
 		} catch (error) {
 			if (error instanceof ApiClientError) {
 				if (error.status === 401) {

@@ -29,7 +29,7 @@ export async function login(data: LoginInput): Promise<AuthResponse> {
 		method: "POST",
 		body: JSON.stringify(data),
 	});
-	if (import.meta.env.PROD && res.data?.accessToken && res.data?.refreshToken) {
+	if (import.meta.env.PROD && res.data.accessToken && res.data.refreshToken) {
 		tokenStore.setTokens(res.data.accessToken, res.data.refreshToken);
 	}
 	return res.data;
@@ -40,7 +40,7 @@ export async function register(data: RegisterInput): Promise<AuthResponse> {
 		method: "POST",
 		body: JSON.stringify(data),
 	});
-	if (import.meta.env.PROD && res.data?.accessToken && res.data?.refreshToken) {
+	if (import.meta.env.PROD && res.data.accessToken && res.data.refreshToken) {
 		tokenStore.setTokens(res.data.accessToken, res.data.refreshToken);
 	}
 	return res.data;
@@ -95,7 +95,7 @@ export async function googleCallback(idToken: string): Promise<AuthResponse> {
 		method: "POST",
 		body: JSON.stringify({ idToken }),
 	});
-	if (import.meta.env.PROD && res.data?.accessToken && res.data?.refreshToken) {
+	if (import.meta.env.PROD && res.data.accessToken && res.data.refreshToken) {
 		tokenStore.setTokens(res.data.accessToken, res.data.refreshToken);
 	}
 	return res.data;

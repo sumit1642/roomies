@@ -534,22 +534,24 @@ export interface RoommateProfile {
 	profilePhotoUrl: string | null;
 	course: string | null;
 	yearOfStudy: number | null;
-	gender: Gender | null;
+	gender?: Gender | null;
 	bio: string | null;
 	/** Roommate-specific intro: returned by PUT /students/:userId/roommate-profile */
 	roommateBio: string | null;
-	isOptedIn: boolean;
+	lookingForRoommate?: boolean;
 	/** Compatibility score 0–100, null if preferences unavailable */
 	compatibilityScore: number | null;
+	compatibilityAvailable?: boolean;
 	preferences: PreferencePair[];
 	averageRating: number;
 	ratingCount: number;
-	/** Whether current user has blocked this person */
-	isBlocked?: boolean;
+	institution?: { name: string; city: string | null } | null;
 }
 
 export interface RoommateProfileUpdate {
-	isOptedIn?: boolean;
+	lookingForRoommate: boolean;
+	/** Optional bio shown on the roommate finder feed */
+	roommateBio?: string | null;
 }
 
 // ── Saved Searches ────────────────────────────────────────────────────────────
@@ -563,21 +565,19 @@ export interface SavedSearch {
 	name: string;
 	/** Raw filter params stored as JSON */
 	filters: Record<string, unknown>;
-	alertEnabled: boolean;
+	lastAlertedAt: string | null;
 	createdAt: string;
-	updatedAt: string;
+	updatedAt?: string;
 }
 
 export interface CreateSavedSearchInput {
 	name: string;
 	filters: Record<string, unknown>;
-	alertEnabled?: boolean;
 }
 
 export interface UpdateSavedSearchInput {
 	name?: string;
 	filters?: Record<string, unknown>;
-	alertEnabled?: boolean;
 }
 
 // ── Rent Index ────────────────────────────────────────────────────────────────
@@ -613,14 +613,14 @@ export interface Report {
 	reporterId: string;
 	ratingId: string;
 	reason: ReportReason;
-	description: string | null;
+	explanation: string | null;
 	status: ReportStatus;
 	createdAt: string;
 }
 
 export interface SubmitReportInput {
 	reason: ReportReason;
-	description?: string;
+	explanation?: string;
 }
 
 // ── Admin: Verification Queue ─────────────────────────────────────────────────

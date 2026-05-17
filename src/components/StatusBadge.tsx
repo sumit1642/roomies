@@ -39,7 +39,7 @@ interface StatusBadgeProps {
 }
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
-	const config = statusConfig[status] || { variant: "secondary" as const, label: status };
+	const config = statusConfig[status];
 
 	return (
 		<Badge

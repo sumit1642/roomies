@@ -22,7 +22,6 @@ import {
 	Star,
 	AlertCircle,
 	CheckCircle,
-	Clock,
 	XCircle,
 	Home,
 } from "lucide-react";
@@ -33,7 +32,6 @@ export const Route = createFileRoute("/_auth/notifications")({
 	component: NotificationsPage,
 });
 
-// Maps notification type to an icon and action path
 function getNotificationMeta(type: string): {
 	icon: typeof Bell;
 	color: string;
@@ -78,41 +76,30 @@ function getNotificationMeta(type: string): {
 function NotificationsPage() {
 	const navigate = useNavigate();
 	const qc = useQueryClient();
-	const [nextCursor, setNextCursor] = useState<Cursor | null>(null);
 	const [isLoadingMore, setIsLoadingMore] = useState(false);
 	const [markingId, setMarkingId] = useState<string | null>(null);
 	const [markingAll, setMarkingAll] = useState(false);
 
-	// ── Initial fetch ────────────────────────────────────────────────────────
-	const {
-		data: notificationsData,
-		isLoading,
-		setData,
-	} = useQuery({
+	// Fetch notifications — nextCursor is derived directly from query data, no useState needed
+	const { data: notificationsData, isLoading } = useQuery({
 		queryKey: queryKeys.notifications.list(undefined),
-		queryFn: async () => {
-			const data = await getNotifications(undefined);
-			setNextCursor(data.nextCursor);
-			return data;
-		},
+		queryFn: () => getNotifications(undefined),
 		staleTime: STALE.NOTIFICATION,
-		// Cast setData to avoid TS confusion — we update cache manually below
-	}) as {
-		data: { items: Notification[] } | undefined;
-		isLoading: boolean;
-		setData: undefined;
-	};
+	});
 
 	const notifications: Notification[] = notificationsData?.items ?? [];
+	const nextCursor: Cursor | null = notificationsData?.nextCursor ?? null;
 
-	// Helper: optimistically update the cached notification list
+	// Helper: patch the cached notification list optimistically
 	const patchCache = (updater: (prev: Notification[]) => Notification[]) => {
-		qc.setQueryData(queryKeys.notifications.list(undefined), (old: { items: Notification[] } | undefined) =>
-			old ? { ...old, items: updater(old.items) } : old,
+		qc.setQueryData(
+			queryKeys.notifications.list(undefined),
+			(old: { items: Notification[]; nextCursor: Cursor | null } | undefined) =>
+				old ? { ...old, items: updater(old.items) } : old,
 		);
 	};
 
-	// ── Mark single as read ──────────────────────────────────────────────────
+	// Mark single notification as read
 	const markSingleMutation = useMutation({
 		mutationFn: (id: string) => markAsRead([id]),
 		onMutate: (id) => {
@@ -120,7 +107,6 @@ function NotificationsPage() {
 			patchCache((prev) => prev.map((n) => (n.notificationId === id ? { ...n, isRead: true } : n)));
 		},
 		onSuccess: () => {
-			// Invalidate bell count so it decrements immediately
 			qc.invalidateQueries({ queryKey: queryKeys.notifications.unreadCount() });
 		},
 		onError: () => {
@@ -129,7 +115,7 @@ function NotificationsPage() {
 		onSettled: () => setMarkingId(null),
 	});
 
-	// ── Mark all as read ─────────────────────────────────────────────────────
+	// Mark all notifications as read
 	const markAllMutation = useMutation({
 		mutationFn: () => markAsRead(),
 		onMutate: () => {
@@ -146,14 +132,16 @@ function NotificationsPage() {
 		onSettled: () => setMarkingAll(false),
 	});
 
+	// Append next page into the cache — no separate state needed for the cursor
 	const handleLoadMore = async (cursor: Cursor) => {
 		setIsLoadingMore(true);
 		try {
 			const data = await getNotifications(undefined, cursor);
-			qc.setQueryData(queryKeys.notifications.list(undefined), (old: { items: Notification[] } | undefined) =>
-				old ? { ...old, items: [...old.items, ...data.items] } : data,
+			qc.setQueryData(
+				queryKeys.notifications.list(undefined),
+				(old: { items: Notification[]; nextCursor: Cursor | null } | undefined) =>
+					old ? { ...old, items: [...old.items, ...data.items], nextCursor: data.nextCursor } : data,
 			);
-			setNextCursor(data.nextCursor);
 		} catch {
 			toast.error("Failed to load notifications");
 		} finally {
@@ -239,9 +227,10 @@ function NotificationsPage() {
 														addSuffix: true,
 													})}
 												</p>
-												{/* Show action hint */}
 												{meta.actionPath && (
-													<p className="text-xs text-primary mt-1 opacity-70">Click to view →</p>
+													<p className="text-xs text-primary mt-1 opacity-70">
+														Click to view →
+													</p>
 												)}
 											</div>
 											{!notification.isRead && (

@@ -257,7 +257,7 @@ function VerificationCard({
 			<CardContent className="flex-1 space-y-2 text-sm pb-3">
 				<div className="flex justify-between">
 					<span className="text-muted-foreground">Email</span>
-					<span className="font-medium truncate max-w-[160px]">{item.email}</span>
+					<span className="font-medium truncate max-w-40">{item.email}</span>
 				</div>
 				<div className="flex justify-between">
 					<span className="text-muted-foreground">Document Type</span>

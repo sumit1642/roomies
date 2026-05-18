@@ -192,7 +192,7 @@ function StudentProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 				gender: (formData.gender as StudentProfile["gender"]) || undefined,
 				dateOfBirth: formData.dateOfBirth || undefined,
 			});
-			setProfile(updated);
+			setProfile((prev) => (prev ? { ...prev, ...updated } : updated));
 			// Invalidate so dashboard and any other consumer gets fresh data
 			void qc.invalidateQueries({ queryKey: queryKeys.studentProfile(userId) });
 			toast.success("Profile updated successfully");
@@ -525,7 +525,7 @@ function PgOwnerProfilePage({ userId, refreshUser }: { userId: string; refreshUs
 				businessPhone: formData.businessPhone || undefined,
 				operatingSince: formData.operatingSince ? parseInt(formData.operatingSince) : undefined,
 			});
-			setProfile(updated);
+			setProfile((prev) => (prev ? { ...prev, ...updated } : updated));
 			// Invalidate so dashboard and any other consumer gets fresh data
 			void qc.invalidateQueries({ queryKey: queryKeys.pgOwnerProfile(userId) });
 			toast.success("Profile updated successfully");
